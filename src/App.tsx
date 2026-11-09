@@ -1,0 +1,607 @@
+import React, { useState, useEffect } from 'react';
+import { Header } from './components/Header';
+import { BudgetOverview } from './components/BudgetOverview';
+import { ActiveTaskHUD } from './components/ActiveTaskHUD';
+import { DayTracker } from './components/DayTracker';
+import { DayPlanner } from './components/DayPlanner';
+import { HistoryView } from './components/HistoryView';
+import { TaskNotesModal } from './components/TaskNotesModal';
+import { TaskOverModal } from './components/TaskOverModal';
+import { MiniWidget } from './components/MiniWidget';
+import { CreateTemplateModal } from './components/CreateTemplateModal';
+import { AddTemplateTaskModal } from './components/AddTemplateTaskModal';
+import { ScheduleYouTubeModal } from './components/ScheduleYouTubeModal';
+import { YouTubePlayerModal } from './components/YouTubePlayerModal';
+import { DropVideoModal } from './components/DropVideoModal';
+import { DropPlaylistModal } from './components/DropPlaylistModal';
+import { StudyLibrary } from './components/StudyLibrary';
+import { AIDigestModal } from './components/AIDigestModal';
+import { BottomNav } from './components/BottomNav';
+import { OfflineCatchupModal, OfflineCatchupData } from './components/OfflineCatchupModal';
+import { AppView, DayPlan, Task, PriorityLevel, TaskTemplate, YouTubeVideo, StudySubject } from './types';
+import { 
+  getFormattedDate, 
+  getTomorrowDate, 
+  loadDayPlan, 
+  saveDayPlan,
+  loadTaskTemplates,
+  saveTaskTemplate,
+  deleteTaskTemplate,
+  loadStudySubjects,
+  saveStudySubjects,
+  addStudySubject,
+  addVideoToSubjectPlaylist,
+  addImportedPlaylistToSubject,
+  extractYouTubeId,
+  extractYouTubePlaylistId
+} from './utils/storage';
+import { useTimerEngine } from './hooks/useTimerEngine';
+import { Moon, ArrowRight, UploadCloud, Tv } from 'lucide-react';
+
+export function App() {
+  const todayStr = getFormattedDate();
+  const tomorrowStr = getTomorrowDate();
+
+  const [selectedDate, setSelectedDate] = useState<string>(todayStr);
+  const [activeView, setActiveView] = useState<AppView>('tracker');
+  const [isMiniMode, setIsMiniMode] = useState<boolean>(false);
+  const [currentPlan, setCurrentPlan] = useState<DayPlan>(() => loadDayPlan(todayStr));
+  const [noteModalTask, setNoteModalTask] = useState<Task | null>(null);
+
+  // Task Templates state & modals
+  const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>(() => loadTaskTemplates());
+  const [isCreateTemplateModalOpen, setIsCreateTemplateModalOpen] = useState<boolean>(false);
+  const [selectedTemplateForAddition, setSelectedTemplateForAddition] = useState<TaskTemplate | null>(null);
+
+  // YouTube Studio & Player Modals
+  const [isScheduleYouTubeModalOpen, setIsScheduleYouTubeModalOpen] = useState<boolean>(false);
+  const [activePlayingVideo, setActivePlayingVideo] = useState<YouTubeVideo | null>(null);
+
+  // Study Library Subjects state
+  const [studySubjects, setStudySubjects] = useState<StudySubject[]>(() => loadStudySubjects());
+
+  // AI Lecture & TP Digest Modal
+  const [isAIDigestModalOpen, setIsAIDigestModalOpen] = useState<boolean>(false);
+
+  // Drag & Drop State
+  const [isGlobalDragOver, setIsGlobalDragOver] = useState(false);
+  const [droppedVideoId, setDroppedVideoId] = useState<string | null>(null);
+  const [droppedPlaylistId, setDroppedPlaylistId] = useState<string | null>(null);
+  const [isImportPlaylistModalOpen, setIsImportPlaylistModalOpen] = useState<boolean>(false);
+
+  // Offline Time Reconcile Catchup State (When PC was turned off / sleeping)
+  const [offlineCatchupData, setOfflineCatchupData] = useState<OfflineCatchupData | null>(null);
+
+  const isToday = selectedDate === todayStr;
+  const isTomorrow = selectedDate === tomorrowStr;
+
+  useEffect(() => {
+    const loaded = loadDayPlan(selectedDate);
+    setCurrentPlan(loaded);
+  }, [selectedDate]);
+
+  // Initial startup offline gap detection (if PC was powered off or app was closed)
+  useEffect(() => {
+    if (!currentPlan.isDayStarted || !currentPlan.lastHeartbeatTimestamp) return;
+
+    const lastBeatMs = new Date(currentPlan.lastHeartbeatTimestamp).getTime();
+    const nowMs = Date.now();
+    const elapsedSec = Math.floor((nowMs - lastBeatMs) / 1000);
+
+    // If more than 60 seconds elapsed while app/PC was off
+    if (elapsedSec >= 60) {
+      const activeTask = currentPlan.activeTaskId
+        ? currentPlan.tasks.find((t) => t.id === currentPlan.activeTaskId) || null
+        : null;
+
+      setOfflineCatchupData({
+        elapsedSeconds: elapsedSec,
+        lastBeatTime: new Date(lastBeatMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        nowTime: new Date(nowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        activeTask,
+      });
+    }
+  }, []);
+
+  // Sleep / Hibernation resume gap detection
+  const handleOfflineSleepDetected = (elapsedSec: number) => {
+    if (elapsedSec < 45) return;
+    const nowMs = Date.now();
+    const lastBeatMs = nowMs - (elapsedSec * 1000);
+    const activeTask = currentPlan.activeTaskId
+      ? currentPlan.tasks.find((t) => t.id === currentPlan.activeTaskId) || null
+      : null;
+
+    setOfflineCatchupData({
+      elapsedSeconds: elapsedSec,
+      lastBeatTime: new Date(lastBeatMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      nowTime: new Date(nowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      activeTask,
+    });
+  };
+
+  const {
+    startDay,
+    startTask,
+    pauseTask,
+    completeTask,
+    extendTaskTime,
+    taskOverModalTask,
+    setTaskOverModalTask,
+  } = useTimerEngine({
+    currentPlan,
+    setCurrentPlan,
+    isToday,
+    onOfflineSleepDetected: handleOfflineSleepDetected,
+  });
+
+  const handleApplyOfflineTime = (appliedSeconds: number, target: 'work' | 'rest' | 'discard') => {
+    if (target === 'work' && currentPlan.activeTaskId && appliedSeconds > 0) {
+      const activeTaskId = currentPlan.activeTaskId;
+      const updatedTasks = currentPlan.tasks.map((t) => {
+        if (t.id === activeTaskId) {
+          return { ...t, actualDuration: t.actualDuration + appliedSeconds };
+        }
+        return t;
+      });
+      const updatedPlan: DayPlan = {
+        ...currentPlan,
+        tasks: updatedTasks,
+        usedWorkSeconds: currentPlan.usedWorkSeconds + appliedSeconds,
+        lastHeartbeatTimestamp: new Date().toISOString(),
+      };
+      setCurrentPlan(updatedPlan);
+      saveDayPlan(updatedPlan);
+    } else if (target === 'rest' && appliedSeconds > 0) {
+      const updatedPlan: DayPlan = {
+        ...currentPlan,
+        usedRestSeconds: currentPlan.usedRestSeconds + appliedSeconds,
+        lastHeartbeatTimestamp: new Date().toISOString(),
+      };
+      setCurrentPlan(updatedPlan);
+      saveDayPlan(updatedPlan);
+    } else {
+      // Discard offline gap, reset heartbeat to now
+      const updatedPlan: DayPlan = {
+        ...currentPlan,
+        lastHeartbeatTimestamp: new Date().toISOString(),
+      };
+      setCurrentPlan(updatedPlan);
+      saveDayPlan(updatedPlan);
+    }
+    setOfflineCatchupData(null);
+  };
+
+  const handleUpdatePlan = (updated: DayPlan) => {
+    setCurrentPlan(updated);
+    saveDayPlan(updated);
+  };
+
+  const handleQuickAddTask = (title: string, duration: number, priority: PriorityLevel) => {
+    const newTask: Task = {
+      id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      title,
+      notes: '',
+      plannedDuration: duration,
+      actualDuration: 0,
+      status: 'pending',
+      priority,
+    };
+
+    const updated: DayPlan = {
+      ...currentPlan,
+      tasks: [...currentPlan.tasks, newTask],
+    };
+    setCurrentPlan(updated);
+    saveDayPlan(updated);
+  };
+
+  const handleSelectTemplateToAdd = (tpl: TaskTemplate) => {
+    setSelectedTemplateForAddition(tpl);
+  };
+
+  const handleConfirmAddTemplateTask = (customized: Omit<Task, 'id' | 'actualDuration' | 'status'>) => {
+    const newTask: Task = {
+      ...customized,
+      id: 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+      actualDuration: 0,
+      status: 'pending',
+    };
+
+    const updated: DayPlan = {
+      ...currentPlan,
+      tasks: [...currentPlan.tasks, newTask],
+    };
+    setCurrentPlan(updated);
+    saveDayPlan(updated);
+  };
+
+  const handleSaveTaskAsTemplate = (task: Task) => {
+    const newTemplate: TaskTemplate = {
+      id: 'template_' + Date.now(),
+      title: task.title,
+      notes: task.notes,
+      plannedDuration: task.plannedDuration,
+      priority: task.priority,
+      scheduledStartTime: task.scheduledStartTime,
+    };
+    const updated = saveTaskTemplate(newTemplate);
+    setTaskTemplates(updated);
+  };
+
+  const handleSaveTemplate = (tpl: TaskTemplate) => {
+    const updated = saveTaskTemplate(tpl);
+    setTaskTemplates(updated);
+  };
+
+  const handleDeleteTemplate = (tplId: string) => {
+    const updated = deleteTaskTemplate(tplId);
+    setTaskTemplates(updated);
+  };
+
+  const handleUpdateSubjects = (updated: StudySubject[]) => {
+    setStudySubjects(updated);
+    saveStudySubjects(updated);
+  };
+
+  const handleSaveNotes = (taskId: string, newNotes: string) => {
+    const updatedTasks = currentPlan.tasks.map((t) =>
+      t.id === taskId ? { ...t, notes: newNotes } : t
+    );
+    const updated: DayPlan = {
+      ...currentPlan,
+      tasks: updatedTasks,
+    };
+    setCurrentPlan(updated);
+    saveDayPlan(updated);
+  };
+
+  // Drag and Drop Handler from YouTube / Browser
+  const handleGlobalDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsGlobalDragOver(true);
+  };
+
+  const handleGlobalDragLeave = (e: React.DragEvent) => {
+    // Only deactivate if leaving the window
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsGlobalDragOver(false);
+    }
+  };
+
+  const handleGlobalDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsGlobalDragOver(false);
+
+    const droppedText = e.dataTransfer.getData('text/uri-list') || 
+                        e.dataTransfer.getData('text/plain') || 
+                        e.dataTransfer.getData('text/html');
+
+    if (droppedText) {
+      // 1. Check if dropped text is a YouTube Playlist (e.g. list=PL... or playlist?list=...)
+      const plId = extractYouTubePlaylistId(droppedText);
+      if (plId) {
+        setDroppedPlaylistId(plId);
+        return;
+      }
+
+      // 2. Otherwise single video
+      const vId = extractYouTubeId(droppedText);
+      if (vId) {
+        setDroppedVideoId(vId);
+      }
+    }
+  };
+
+  const handleImportPlaylist = (
+    subjectId: string,
+    playlistTitle: string,
+    description: string,
+    videos: Array<{ title: string; url: string; videoId: string; durationMinutes: number; notes?: string }>
+  ) => {
+    const updated = addImportedPlaylistToSubject(subjectId, playlistTitle, description, videos);
+    setStudySubjects(updated);
+    setActiveView('library');
+  };
+
+  const handleCreateSubjectAndImportPlaylist = (
+    subjectName: string,
+    playlistTitle: string,
+    description: string,
+    videos: Array<{ title: string; url: string; videoId: string; durationMinutes: number; notes?: string }>
+  ) => {
+    const withSubject = addStudySubject(subjectName);
+    const newSubject = withSubject[withSubject.length - 1];
+    const updated = addImportedPlaylistToSubject(newSubject.id, playlistTitle, description, videos);
+    setStudySubjects(updated);
+    setActiveView('library');
+  };
+
+  // Add dropped video to chosen playlist
+  const handleAddDroppedVideo = (video: YouTubeVideo) => {
+    if (video.type === 'work') {
+      const updated: DayPlan = {
+        ...currentPlan,
+        youtubeWorkVideos: [...(currentPlan.youtubeWorkVideos || []), video],
+      };
+      setCurrentPlan(updated);
+      saveDayPlan(updated);
+    } else {
+      const updated: DayPlan = {
+        ...currentPlan,
+        youtubeRestVideos: [...(currentPlan.youtubeRestVideos || []), video],
+      };
+      setCurrentPlan(updated);
+      saveDayPlan(updated);
+    }
+  };
+
+  const handleSaveDroppedToSubject = (
+    subjectId: string,
+    playlistId: string,
+    video: { title: string; url: string; videoId: string; durationMinutes: number; notes?: string }
+  ) => {
+    const updated = addVideoToSubjectPlaylist(subjectId, playlistId, video);
+    setStudySubjects(updated);
+  };
+
+  const currentHour = new Date().getHours();
+  const isEvening = currentHour >= 19 || currentHour < 4;
+
+  return (
+    <div 
+      className="min-h-screen bg-[#121214] text-zinc-100 flex flex-col font-sans selection:bg-zinc-700 selection:text-white relative"
+      onDragOver={handleGlobalDragOver}
+      onDragLeave={handleGlobalDragLeave}
+      onDrop={handleGlobalDrop}
+    >
+      
+      {/* Global Drag-and-Drop Visual Indicator */}
+      {isGlobalDragOver && (
+        <div className="fixed inset-0 z-50 pointer-events-none bg-black/75 border-2 border-dashed border-zinc-400 m-3 rounded-3xl flex flex-col items-center justify-center text-center p-6 backdrop-blur-xs animate-fade-in">
+          <UploadCloud className="w-16 h-16 text-zinc-200 mb-3 animate-bounce" />
+          <h3 className="text-xl font-bold font-display text-white">
+            Drop YouTube Video to Schedule
+          </h3>
+          <p className="text-xs text-zinc-400 max-w-sm mt-1">
+            Release anywhere to auto-fetch details and pick whether to add to Work or Entertainment!
+          </p>
+        </div>
+      )}
+
+      {/* Top Header */}
+      <Header
+        selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
+        activeView={activeView}
+        setActiveView={setActiveView}
+        isMiniMode={isMiniMode}
+        setIsMiniMode={setIsMiniMode}
+        onOpenAIDigest={() => setIsAIDigestModalOpen(true)}
+      />
+
+      {/* Main Container */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 py-5 pb-24 md:pb-6">
+        
+        {/* Evening Planning Reminder */}
+        {isEvening && activeView === 'tracker' && (
+          <div className="bg-[#18181b] border border-zinc-800 rounded-xl p-3.5 mb-4 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-7 h-7 rounded-lg bg-zinc-800 text-zinc-400 flex items-center justify-center shrink-0">
+                <Moon className="w-3.5 h-3.5" />
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-zinc-200">
+                  Evening Planning
+                </h4>
+                <p className="text-[11px] text-zinc-400">
+                  Ready for tomorrow? Take 2 minutes to plan tomorrow's tasks, notes, and YouTube playlists.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setSelectedDate(tomorrowStr);
+                setActiveView('planner');
+              }}
+              className="px-3 py-1.5 bg-zinc-200 hover:bg-white text-zinc-950 font-bold rounded-lg text-xs transition-colors flex items-center space-x-1 shrink-0 cursor-pointer"
+            >
+              <span>Plan Tomorrow</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* View 1: Tracker View (Today) */}
+        {activeView === 'tracker' && (
+          <div>
+            <BudgetOverview plan={currentPlan} />
+
+            <ActiveTaskHUD
+              plan={currentPlan}
+              onStartDay={startDay}
+              onPauseTask={pauseTask}
+              onCompleteTask={completeTask}
+              onExtendTask={extendTaskTime}
+              onOpenNotes={setNoteModalTask}
+              isToday={isToday}
+            />
+
+            <DayTracker
+              plan={currentPlan}
+              onStartTask={startTask}
+              onPauseTask={pauseTask}
+              onCompleteTask={completeTask}
+              onOpenNotes={setNoteModalTask}
+              onQuickAddTask={handleQuickAddTask}
+              onGoToPlanner={() => setActiveView('planner')}
+              taskTemplates={taskTemplates}
+              onSelectTemplate={handleSelectTemplateToAdd}
+              onSaveTaskAsTemplate={handleSaveTaskAsTemplate}
+              onOpenScheduleYouTubeModal={() => setIsScheduleYouTubeModalOpen(true)}
+              onPlayVideo={(video) => setActivePlayingVideo(video)}
+            />
+          </div>
+        )}
+
+        {/* View 2: Schedule Planner */}
+        {activeView === 'planner' && (
+          <DayPlanner
+            plan={currentPlan}
+            onUpdatePlan={handleUpdatePlan}
+            onOpenNotes={setNoteModalTask}
+            onSwitchToTracker={() => setActiveView('tracker')}
+            isTomorrow={isTomorrow}
+            taskTemplates={taskTemplates}
+            onOpenCreateTemplateModal={() => setIsCreateTemplateModalOpen(true)}
+            onSaveTaskAsTemplate={handleSaveTaskAsTemplate}
+            onSelectTemplate={handleSelectTemplateToAdd}
+            onOpenScheduleYouTubeModal={() => setIsScheduleYouTubeModalOpen(true)}
+            onOpenAIDigest={() => setIsAIDigestModalOpen(true)}
+          />
+        )}
+
+        {/* View 3: Study Library */}
+        {activeView === 'library' && (
+          <StudyLibrary
+            subjects={studySubjects}
+            currentPlan={currentPlan}
+            onUpdatePlan={handleUpdatePlan}
+            onUpdateSubjects={handleUpdateSubjects}
+            onPlayVideo={(video) => setActivePlayingVideo(video)}
+            onOpenImportPlaylist={() => setIsImportPlaylistModalOpen(true)}
+          />
+        )}
+
+        {/* View 4: History */}
+        {activeView === 'history' && (
+          <HistoryView
+            onSelectDate={(date) => {
+              setSelectedDate(date);
+              setActiveView('tracker');
+            }}
+          />
+        )}
+      </main>
+
+      {/* Floating Mini Widget */}
+      {isMiniMode && (
+        <MiniWidget
+          plan={currentPlan}
+          onExpand={() => setIsMiniMode(false)}
+          onPauseTask={pauseTask}
+          onCompleteTask={completeTask}
+          onExtendTask={extendTaskTime}
+        />
+      )}
+
+      {/* Dragged & Dropped Video Destination Modal */}
+      <DropVideoModal
+        videoId={droppedVideoId}
+        isOpen={!!droppedVideoId}
+        onClose={() => setDroppedVideoId(null)}
+        plan={currentPlan}
+        onAddVideoToPlaylist={handleAddDroppedVideo}
+        subjects={studySubjects}
+        onSaveToSubjectPlaylist={handleSaveDroppedToSubject}
+      />
+
+      {/* Dragged & Dropped YouTube Playlist Destination Modal */}
+      <DropPlaylistModal
+        playlistId={droppedPlaylistId}
+        isOpen={!!droppedPlaylistId || isImportPlaylistModalOpen}
+        onClose={() => {
+          setDroppedPlaylistId(null);
+          setIsImportPlaylistModalOpen(false);
+        }}
+        subjects={studySubjects}
+        onImportPlaylist={handleImportPlaylist}
+        onCreateSubjectAndImport={handleCreateSubjectAndImportPlaylist}
+      />
+
+      {/* 1. Schedule YouTube Playlists Studio Modal */}
+      <ScheduleYouTubeModal
+        isOpen={isScheduleYouTubeModalOpen}
+        onClose={() => setIsScheduleYouTubeModalOpen(false)}
+        plan={currentPlan}
+        onUpdatePlan={handleUpdatePlan}
+        onPlayVideo={(video) => setActivePlayingVideo(video)}
+        subjects={studySubjects}
+      />
+
+      {/* 2. Distraction-Free Embedded YouTube Player Modal */}
+      <YouTubePlayerModal
+        video={activePlayingVideo}
+        isOpen={!!activePlayingVideo}
+        onClose={() => setActivePlayingVideo(null)}
+      />
+
+      {/* 3. Review & Customize Template Task Before Adding Modal */}
+      <AddTemplateTaskModal
+        template={selectedTemplateForAddition}
+        isOpen={!!selectedTemplateForAddition}
+        onClose={() => setSelectedTemplateForAddition(null)}
+        onConfirmAdd={handleConfirmAddTemplateTask}
+      />
+
+      {/* 4. Reusable Task Template Creator & Manager Modal */}
+      <CreateTemplateModal
+        isOpen={isCreateTemplateModalOpen}
+        onClose={() => setIsCreateTemplateModalOpen(false)}
+        templates={taskTemplates}
+        onSaveTemplate={handleSaveTemplate}
+        onDeleteTemplate={handleDeleteTemplate}
+      />
+
+      {/* 5. AI Lecture & TP Homework Digest Studio Modal */}
+      <AIDigestModal
+        isOpen={isAIDigestModalOpen}
+        onClose={() => setIsAIDigestModalOpen(false)}
+        subjects={studySubjects}
+        currentPlan={currentPlan}
+        onUpdatePlan={handleUpdatePlan}
+        onPlayVideo={(video) => setActivePlayingVideo(video)}
+      />
+
+      {/* 5. Notes Modal */}
+      <TaskNotesModal
+        task={noteModalTask}
+        isOpen={!!noteModalTask}
+        onClose={() => setNoteModalTask(null)}
+        onSaveNotes={handleSaveNotes}
+      />
+
+      {/* 6. Task Time-Up Confirmation Modal */}
+      <TaskOverModal
+        task={taskOverModalTask}
+        isOpen={!!taskOverModalTask}
+        onComplete={completeTask}
+        onExtend={extendTaskTime}
+        onClose={() => setTaskOverModalTask(null)}
+      />
+
+      {/* 7. Offline Time Reconcile Catchup Modal (When PC was turned off / sleeping) */}
+      <OfflineCatchupModal
+        isOpen={!!offlineCatchupData}
+        data={offlineCatchupData}
+        onApply={handleApplyOfflineTime}
+        onClose={() => setOfflineCatchupData(null)}
+      />
+
+      {/* Subtle Minimal Footer */}
+      <footer className="border-t border-zinc-800/80 py-3 text-center text-[11px] text-zinc-600 mb-14 md:mb-0">
+        FocusFlow • Dynamic Energy & Rest Management
+      </footer>
+
+      {/* Native Mobile Bottom Navigation */}
+      <BottomNav
+        activeView={activeView}
+        setActiveView={setActiveView}
+        onOpenAIDigest={() => setIsAIDigestModalOpen(true)}
+      />
+    </div>
+  );
+}
+
+export default App;
