@@ -8,8 +8,10 @@ declare global {
     electronAPI?: {
       isElectron: boolean;
       showNotification: (options: { title: string; body: string; urgency?: 'low' | 'normal' | 'critical' }) => Promise<boolean>;
-      toggleAlwaysOnTop: (flag: boolean) => Promise<boolean>;
+      toggleAlwaysOnTop: (flag?: boolean) => Promise<boolean>;
       getAlwaysOnTop: () => Promise<boolean>;
+      enterMiniMode?: () => Promise<boolean>;
+      exitMiniMode?: () => Promise<boolean>;
       fetchYouTubeMeta?: (videoId: string) => Promise<{
         success: boolean;
         title: string;

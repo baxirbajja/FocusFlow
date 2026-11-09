@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Notification, Tray, Menu, shell, session, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, Notification, Tray, Menu, shell, session, nativeImage, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -226,9 +226,48 @@ ipcMain.handle('show-notification', (event, { title, body, urgency }) => {
   return false;
 });
 
+let savedNormalBounds = null;
+
+ipcMain.handle('enter-mini-mode', () => {
+  if (mainWindow) {
+    const current = mainWindow.getBounds();
+    if (current.width > 500 && current.height > 300) {
+      savedNormalBounds = current;
+    }
+    mainWindow.setMinimumSize(320, 120);
+    mainWindow.setSize(380, 165);
+
+    try {
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
+      mainWindow.setPosition(Math.max(0, screenW - 400), Math.max(0, screenH - 185));
+    } catch (_) {}
+
+    mainWindow.setAlwaysOnTop(true, 'floating');
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('exit-mini-mode', () => {
+  if (mainWindow) {
+    mainWindow.setMinimumSize(800, 600);
+    if (savedNormalBounds && savedNormalBounds.width >= 800) {
+      mainWindow.setBounds(savedNormalBounds);
+    } else {
+      mainWindow.setSize(1240, 860);
+      mainWindow.center();
+    }
+    mainWindow.setAlwaysOnTop(false);
+    return false;
+  }
+  return false;
+});
+
 ipcMain.handle('toggle-always-on-top', (event, flag) => {
   if (mainWindow) {
-    mainWindow.setAlwaysOnTop(flag, 'floating');
+    const next = typeof flag === 'boolean' ? flag : !mainWindow.isAlwaysOnTop();
+    mainWindow.setAlwaysOnTop(next, 'floating');
     return mainWindow.isAlwaysOnTop();
   }
   return false;

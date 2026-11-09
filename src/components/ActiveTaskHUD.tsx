@@ -4,7 +4,8 @@ import {
   Pause, 
   CheckCircle2, 
   FileText, 
-  Coffee
+  Coffee,
+  Pin
 } from 'lucide-react';
 import { DayPlan, Task } from '../types';
 import { formatSeconds, formatMinutes } from '../utils/storage';
@@ -17,6 +18,7 @@ interface ActiveTaskHUDProps {
   onExtendTask: (taskId: string, mins: number) => void;
   onOpenNotes: (task: Task) => void;
   isToday: boolean;
+  onEnterMiniMode?: () => void;
 }
 
 export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
@@ -27,6 +29,7 @@ export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
   onExtendTask,
   onOpenNotes,
   isToday,
+  onEnterMiniMode,
 }) => {
   const activeTask = plan.tasks.find((t) => t.id === plan.activeTaskId);
 
@@ -136,6 +139,17 @@ export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
                 <span>Take Break</span>
               </button>
 
+              {onEnterMiniMode && (
+                <button
+                  onClick={onEnterMiniMode}
+                  title="Pin mini floating pop-up timer on screen"
+                  className="px-3 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold rounded-lg border border-zinc-700 text-xs flex items-center space-x-1.5 cursor-pointer transition-colors"
+                >
+                  <Pin className="w-3.5 h-3.5 text-cyan-400 rotate-45" />
+                  <span>Pin Mini Timer</span>
+                </button>
+              )}
+
               {/* Extensions */}
               <div className="flex items-center space-x-1">
                 {[10, 15, 30].map((m) => (
@@ -199,6 +213,16 @@ export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
           <div className="text-[11px] text-zinc-500 font-medium">
             Limit: {formatMinutes(plan.restHoursBudget)}
           </div>
+          {onEnterMiniMode && (
+            <button
+              onClick={onEnterMiniMode}
+              title="Pin mini floating pop-up timer on screen while resting"
+              className="mt-2 px-3 py-1 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold rounded-lg border border-zinc-700 text-xs inline-flex items-center space-x-1.5 cursor-pointer transition-colors"
+            >
+              <Pin className="w-3.5 h-3.5 text-amber-300 rotate-45" />
+              <span>Pin Free Time</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -48,8 +48,48 @@ export function App() {
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [activeView, setActiveView] = useState<AppView>('tracker');
   const [isMiniMode, setIsMiniMode] = useState<boolean>(false);
+  const [isPinned, setIsPinned] = useState<boolean>(false);
   const [currentPlan, setCurrentPlan] = useState<DayPlan>(() => loadDayPlan(todayStr));
   const [noteModalTask, setNoteModalTask] = useState<Task | null>(null);
+
+  // Sync initial Always-On-Top state if running in Electron
+  useEffect(() => {
+    if (window.electronAPI?.getAlwaysOnTop) {
+      window.electronAPI.getAlwaysOnTop().then(setIsPinned);
+    }
+  }, []);
+
+  const handleEnterMiniMode = async () => {
+    setIsMiniMode(true);
+    if (window.electronAPI?.enterMiniMode) {
+      await window.electronAPI.enterMiniMode();
+      setIsPinned(true);
+    }
+  };
+
+  const handleExitMiniMode = async () => {
+    setIsMiniMode(false);
+    if (window.electronAPI?.exitMiniMode) {
+      await window.electronAPI.exitMiniMode();
+      setIsPinned(false);
+    }
+  };
+
+  const handleToggleMiniMode = (next: boolean) => {
+    if (next) {
+      handleEnterMiniMode();
+    } else {
+      handleExitMiniMode();
+    }
+  };
+
+  const handleTogglePin = async () => {
+    if (window.electronAPI?.toggleAlwaysOnTop) {
+      const next = !isPinned;
+      const res = await window.electronAPI.toggleAlwaysOnTop(next);
+      setIsPinned(res);
+    }
+  };
 
   // Task Templates state & modals
   const [taskTemplates, setTaskTemplates] = useState<TaskTemplate[]>(() => loadTaskTemplates());
@@ -394,6 +434,29 @@ export function App() {
   const currentHour = new Date().getHours();
   const isEvening = currentHour >= 19 || currentHour < 4;
 
+  if (isMiniMode) {
+    return (
+      <div className="h-screen w-screen bg-[#121214] text-zinc-100 flex flex-col justify-center p-2 select-none overflow-hidden">
+        <MiniWidget
+          plan={currentPlan}
+          onExpand={handleExitMiniMode}
+          onPauseTask={pauseTask}
+          onCompleteTask={completeTask}
+          onExtendTask={extendTaskTime}
+          onStartNextTask={() => {
+            const nextPending = currentPlan.tasks.find((t) => t.status === 'pending');
+            if (nextPending) startTask(nextPending.id);
+          }}
+          onStartDay={startDay}
+          activePlayingVideo={activePlayingVideo}
+          isPinned={isPinned}
+          onTogglePin={handleTogglePin}
+          isStandaloneWindow={true}
+        />
+      </div>
+    );
+  }
+
   return (
     <div 
       className="min-h-screen bg-[#121214] text-zinc-100 flex flex-col font-sans selection:bg-zinc-700 selection:text-white relative"
@@ -422,7 +485,7 @@ export function App() {
         activeView={activeView}
         setActiveView={setActiveView}
         isMiniMode={isMiniMode}
-        setIsMiniMode={setIsMiniMode}
+        setIsMiniMode={handleToggleMiniMode}
         onOpenAIDigest={() => setIsAIDigestModalOpen(true)}
       />
 
@@ -472,6 +535,7 @@ export function App() {
               onExtendTask={extendTaskTime}
               onOpenNotes={setNoteModalTask}
               isToday={isToday}
+              onEnterMiniMode={handleEnterMiniMode}
             />
 
             <DayTracker
@@ -531,16 +595,7 @@ export function App() {
         )}
       </main>
 
-      {/* Floating Mini Widget */}
-      {isMiniMode && (
-        <MiniWidget
-          plan={currentPlan}
-          onExpand={() => setIsMiniMode(false)}
-          onPauseTask={pauseTask}
-          onCompleteTask={completeTask}
-          onExtendTask={extendTaskTime}
-        />
-      )}
+
 
       {/* Dragged & Dropped Video Destination Modal */}
       <DropVideoModal

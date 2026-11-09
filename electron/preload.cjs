@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   showNotification: (options) => ipcRenderer.invoke('show-notification', options),
   toggleAlwaysOnTop: (flag) => ipcRenderer.invoke('toggle-always-on-top', flag),
   getAlwaysOnTop: () => ipcRenderer.invoke('get-always-on-top'),
+  enterMiniMode: () => ipcRenderer.invoke('enter-mini-mode'),
+  exitMiniMode: () => ipcRenderer.invoke('exit-mini-mode'),
   fetchYouTubeMeta: (videoId) => ipcRenderer.invoke('fetch-youtube-meta', videoId),
   searchYouTube: (query) => ipcRenderer.invoke('search-youtube', query),
   fetchYouTubePlaylist: (playlistId) => ipcRenderer.invoke('fetch-youtube-playlist', playlistId),
