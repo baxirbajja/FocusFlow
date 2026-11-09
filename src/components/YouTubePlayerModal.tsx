@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Briefcase, Coffee, AlertCircle, ExternalLink, CheckCircle2, RotateCcw } from 'lucide-react';
+import { 
+  X, 
+  Briefcase, 
+  Coffee, 
+  AlertCircle, 
+  ExternalLink, 
+  CheckCircle2, 
+  RotateCcw,
+  Maximize2,
+  Minimize2
+} from 'lucide-react';
 import { YouTubeVideo } from '../types';
 import { formatMinutes } from '../utils/storage';
 
@@ -26,9 +36,28 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
 }) => {
   const [currentSeconds, setCurrentSeconds] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
+  const [isTheaterMode, setIsTheaterMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('focusflow_player_theater_mode');
+      return saved !== null ? saved === 'true' : true; // Default to true (Theater Mode!)
+    } catch {
+      return true;
+    }
+  });
+
   const currentSecondsRef = useRef<number>(0);
   const isPlayingRef = useRef<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const toggleTheaterMode = () => {
+    setIsTheaterMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('focusflow_player_theater_mode', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Initialize or reset playback position when video changes
   useEffect(() => {
@@ -60,6 +89,20 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
     return () => clearInterval(interval);
   }, [isOpen, video]);
 
+  // Escape key listener to close modal
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        handleDismiss();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, video]);
+
   // Listen for YouTube IFrame PostMessage events
   useEffect(() => {
     if (!isOpen || !video) return;
@@ -72,7 +115,6 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
         // YT.PlayerState: -1 (unstarted), 0 (ended), 1 (playing), 2 (paused), 3 (buffering), 5 (cued)
         if (data.event === 'onStateChange') {
           if (data.info === 0) {
-            // Auto complete when finished!
             handleVideoEnded();
           } else if (data.info === 1) {
             setIsPlaying(true);
@@ -156,18 +198,34 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
     }
   };
 
+  const iframeSrc = `https://www.youtube.com/embed/${video.videoId}?autoplay=1&enablejsapi=1${startSeconds > 0 ? `&start=${startSeconds}` : ''}`;
+
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in"
+      className={`fixed inset-0 z-50 flex flex-col justify-center bg-black/90 backdrop-blur-md animate-fade-in ${
+        isTheaterMode ? 'p-0' : 'p-4 items-center'
+      }`}
       onClick={(e) => {
         if (e.target === e.currentTarget) handleDismiss();
       }}
     >
-      <div className="bg-[#18181b] border border-zinc-700 rounded-2xl w-full max-w-4xl flex flex-col p-5 shadow-2xl overflow-hidden">
+      <div 
+        className={`bg-[#18181b] flex flex-col shadow-2xl transition-all ${
+          isTheaterMode 
+            ? 'w-full max-w-none border-y border-zinc-800 my-auto' 
+            : 'border border-zinc-700 rounded-2xl w-full max-w-4xl p-5 overflow-hidden'
+        }`}
+      >
         
         {/* Top Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3 shrink-0">
-          <div className="flex items-center space-x-2.5 min-w-0">
+        <div 
+          className={`flex items-center justify-between shrink-0 ${
+            isTheaterMode 
+              ? 'px-4 sm:px-8 py-3 border-b border-zinc-800' 
+              : 'pb-3 border-b border-zinc-800 mb-3'
+          }`}
+        >
+          <div className="flex items-center space-x-3 min-w-0">
             <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
               isWork ? 'bg-zinc-800 text-zinc-200' : 'bg-amber-950/60 text-amber-300 border border-amber-800/60'
             }`}>
@@ -193,7 +251,7 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
                   </span>
                 )}
               </div>
-              <h3 className="text-sm font-bold font-display text-white truncate max-w-md sm:max-w-lg mt-0.5">
+              <h3 className="text-sm sm:text-base font-bold font-display text-white truncate max-w-md sm:max-w-2xl lg:max-w-4xl mt-0.5">
                 {video.title}
               </h3>
             </div>
@@ -211,6 +269,7 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
               <span>Mark Done</span>
             </button>
 
+            {/* Restart From 0:00 Button */}
             {startSeconds > 0 && (
               <button
                 type="button"
@@ -222,6 +281,27 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
               </button>
             )}
 
+            {/* Theater Mode Toggle Button */}
+            <button
+              type="button"
+              onClick={toggleTheaterMode}
+              title={isTheaterMode ? 'Switch to Standard Dialog Mode' : 'Switch to Full-Width Theater Mode'}
+              className="flex items-center space-x-1 p-1.5 sm:px-2 sm:py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+            >
+              {isTheaterMode ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5 text-zinc-300" />
+                  <span className="hidden md:inline text-[11px]">Dialog</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 text-zinc-300" />
+                  <span className="hidden md:inline text-[11px]">Theater</span>
+                </>
+              )}
+            </button>
+
+            {/* Open on YouTube */}
             <button
               type="button"
               onClick={handleOpenExternal}
@@ -232,21 +312,29 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
               <span>YouTube</span>
             </button>
 
+            {/* Close Modal */}
             <button
               type="button"
               onClick={handleDismiss}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              title="Close (Esc)"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* Distraction-Free Embedded Player */}
-        <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800 shadow-inner">
+        {/* Embedded YouTube Player */}
+        <div 
+          className={`relative w-full bg-black flex items-center justify-center overflow-hidden shadow-inner ${
+            isTheaterMode 
+              ? 'h-[56vh] sm:h-[64vh] md:h-[68vh] lg:h-[72vh] max-h-[76vh] border-y border-zinc-900' 
+              : 'aspect-video rounded-xl border border-zinc-800'
+          }`}
+        >
           <iframe
             ref={iframeRef}
-            src={`https://www.youtube.com/embed/${video.videoId}?autoplay=1&enablejsapi=1${startSeconds > 0 ? `&start=${startSeconds}` : ''}`}
+            src={iframeSrc}
             title={video.title}
             referrerPolicy="strict-origin-when-cross-origin"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -256,7 +344,13 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
         </div>
 
         {/* Status / Notes Banner */}
-        <div className="mt-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+        <div 
+          className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs shrink-0 ${
+            isTheaterMode 
+              ? 'px-4 sm:px-8 py-2.5 bg-[#141416] border-t border-zinc-800' 
+              : 'mt-3'
+          }`}
+        >
           <div>
             {video.notes ? (
               <p className="text-zinc-400 text-[11px]">
@@ -264,7 +358,7 @@ export const YouTubePlayerModal: React.FC<YouTubePlayerModalProps> = ({
               </p>
             ) : (
               <p className="text-zinc-500 text-[11px]">
-                Distraction-free mode active. Rest pool is paused; this video counts toward your study/work budget.
+                Distraction-free theater active. External recommendations and algorithmic feeds are blocked.
               </p>
             )}
           </div>

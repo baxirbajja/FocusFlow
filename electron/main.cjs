@@ -27,19 +27,11 @@ function readDiskStore() {
 
 function writeDiskStore(data) {
   try {
-    const tmpPath = `${storeFilePath}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tmpPath, storeFilePath);
+    fs.writeFileSync(storeFilePath, JSON.stringify(data, null, 2), 'utf-8');
     return true;
   } catch (err) {
-    console.error('Failed atomic write to store file, falling back:', err);
-    try {
-      fs.writeFileSync(storeFilePath, JSON.stringify(data, null, 2), 'utf-8');
-      return true;
-    } catch (e2) {
-      console.error('Failed direct write to store file:', e2);
-      return false;
-    }
+    console.error('Failed write to store file:', err);
+    return false;
   }
 }
 
