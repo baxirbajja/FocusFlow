@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { DayPlan, Task } from '../types';
+import { DayPlan, Task, YouTubeVideo } from '../types';
 import { saveDayPlan, rebalanceTaskSchedule, getFormattedDate } from '../utils/storage';
 import { soundManager } from '../utils/audio';
 import { sendDesktopNotification } from '../utils/notifications';
@@ -9,9 +9,16 @@ interface UseTimerEngineProps {
   setCurrentPlan: React.Dispatch<React.SetStateAction<DayPlan>>;
   isToday: boolean;
   onOfflineSleepDetected?: (elapsedSeconds: number) => void;
+  activePlayingVideo?: YouTubeVideo | null;
 }
 
-export function useTimerEngine({ currentPlan, setCurrentPlan, isToday, onOfflineSleepDetected }: UseTimerEngineProps) {
+export function useTimerEngine({
+  currentPlan,
+  setCurrentPlan,
+  isToday,
+  onOfflineSleepDetected,
+  activePlayingVideo,
+}: UseTimerEngineProps) {
   const [taskOverModalTask, setTaskOverModalTask] = useState<Task | null>(null);
   const [hasAlertedTaskOver, setHasAlertedTaskOver] = useState<Record<string, boolean>>({});
   const lastRestWarningTimestamp = useRef<number>(0);
@@ -22,6 +29,11 @@ export function useTimerEngine({ currentPlan, setCurrentPlan, isToday, onOffline
   useEffect(() => {
     planRef.current = currentPlan;
   }, [currentPlan]);
+
+  const activePlayingVideoRef = useRef<YouTubeVideo | null | undefined>(activePlayingVideo);
+  useEffect(() => {
+    activePlayingVideoRef.current = activePlayingVideo;
+  }, [activePlayingVideo]);
 
   // Main 1-Second Timer Heartbeat
   useEffect(() => {
@@ -42,6 +54,7 @@ export function useTimerEngine({ currentPlan, setCurrentPlan, isToday, onOffline
       }
 
       const restBudgetSec = plan.restHoursBudget * 60;
+      const playingVideo = activePlayingVideoRef.current;
 
       // Case 1: Active Task is running
       if (plan.activeTaskId) {
@@ -86,7 +99,18 @@ export function useTimerEngine({ currentPlan, setCurrentPlan, isToday, onOffline
           setTaskOverModalTask(currentTaskObj);
         }
       } 
-      // Case 2: IDLE / REST MODE (Day started, but no task is running)
+      // Case 2: Study/Work Video is playing (Rest budget is frozen, counts toward work time)
+      else if (playingVideo && playingVideo.type === 'work') {
+        const updatedPlan: DayPlan = {
+          ...plan,
+          usedWorkSeconds: plan.usedWorkSeconds + 1,
+          lastHeartbeatTimestamp: new Date().toISOString(),
+        };
+
+        setCurrentPlan(updatedPlan);
+        saveDayPlan(updatedPlan);
+      }
+      // Case 3: IDLE / REST MODE (Day started, no task and no study video running)
       else {
         const newUsedRest = plan.usedRestSeconds + 1;
         const updatedPlan: DayPlan = {

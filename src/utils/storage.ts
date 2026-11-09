@@ -755,3 +755,77 @@ export function addImportedPlaylistToSubject(
   saveStudySubjects(updated);
   return updated;
 }
+
+
+export function updateVideoPlaybackState(
+  dateStr: string,
+  videoId: string,
+  lastPlayedSeconds: number,
+  isWatched: boolean = false,
+  addedWorkSeconds: number = 0
+): { updatedPlan: DayPlan; updatedSubjects: StudySubject[] } {
+  const plan = loadDayPlan(dateStr);
+
+  // 1. Update in DayPlan youtubeWorkVideos
+  let foundInWork = false;
+  const updatedWorkVids = (plan.youtubeWorkVideos || []).map((v) => {
+    if (v.videoId === videoId || v.id === videoId) {
+      foundInWork = true;
+      return {
+        ...v,
+        lastPlayedSeconds,
+        isWatched: isWatched ? true : v.isWatched,
+        watchedDurationSeconds: (v.watchedDurationSeconds || 0) + addedWorkSeconds,
+      };
+    }
+    return v;
+  });
+
+  // Also check in DayPlan youtubeRestVideos
+  const updatedRestVids = (plan.youtubeRestVideos || []).map((v) => {
+    if (v.videoId === videoId || v.id === videoId) {
+      return {
+        ...v,
+        lastPlayedSeconds,
+        isWatched: isWatched ? true : v.isWatched,
+      };
+    }
+    return v;
+  });
+
+  const updatedPlan: DayPlan = {
+    ...plan,
+    youtubeWorkVideos: updatedWorkVids,
+    youtubeRestVideos: updatedRestVids,
+    usedWorkSeconds: plan.usedWorkSeconds + (foundInWork ? addedWorkSeconds : 0),
+    lastHeartbeatTimestamp: new Date().toISOString(),
+  };
+  saveDayPlan(updatedPlan);
+
+  // 2. Also update in StudyLibrary subjects if present
+  const subjects = loadStudySubjects();
+  let subjectChanged = false;
+  const updatedSubjects = subjects.map((subj) => {
+    const updatedPlaylists = subj.playlists.map((pl) => {
+      const updatedVids = pl.videos.map((vid) => {
+        if (vid.videoId === videoId || vid.id === videoId) {
+          subjectChanged = true;
+          return {
+            ...vid,
+            lastPlayedSeconds,
+            isWatched: isWatched ? true : vid.isWatched,
+          };
+        }
+        return vid;
+      });
+      return { ...pl, videos: updatedVids };
+    });
+    return { ...subj, playlists: updatedPlaylists };
+  });
+
+  if (subjectChanged) {
+    saveStudySubjects(updatedSubjects);
+  }
+
+  return { updatedPlan, updatedSubjects };
+}

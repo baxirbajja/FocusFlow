@@ -32,6 +32,8 @@ export interface YouTubeVideo {
   type: 'work' | 'rest';
   notes?: string;
   isWatched?: boolean;
+  lastPlayedSeconds?: number; // Last playback position in seconds (for resuming)
+  watchedDurationSeconds?: number; // Accumulated seconds watched towards budget
 }
 
 export interface DayPlan {
@@ -68,6 +70,8 @@ export interface SubjectVideo {
   durationSeconds?: number;
   notes?: string;
   addedAt: string;
+  lastPlayedSeconds?: number;
+  isWatched?: boolean;
 }
 
 export interface SubjectPlaylist {

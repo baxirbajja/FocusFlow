@@ -33,8 +33,11 @@ import {
   addVideoToSubjectPlaylist,
   addImportedPlaylistToSubject,
   extractYouTubeId,
-  extractYouTubePlaylistId
+  extractYouTubePlaylistId,
+  updateVideoPlaybackState,
 } from './utils/storage';
+import { soundManager } from './utils/audio';
+import { sendDesktopNotification } from './utils/notifications';
 import { useTimerEngine } from './hooks/useTimerEngine';
 import { Moon, ArrowRight, UploadCloud, Tv } from 'lucide-react';
 
@@ -133,6 +136,7 @@ export function App() {
     setCurrentPlan,
     isToday,
     onOfflineSleepDetected: handleOfflineSleepDetected,
+    activePlayingVideo,
   });
 
   const handleApplyOfflineTime = (appliedSeconds: number, target: 'work' | 'rest' | 'discard') => {
@@ -345,6 +349,48 @@ export function App() {
     setStudySubjects(updated);
   };
 
+  const handleMarkVideoDone = (video: YouTubeVideo, currentSeconds: number) => {
+    const totalDurationSec = Math.max(currentSeconds, (video.durationMinutes || 0) * 60);
+    // If work video, calculate remainder of video duration to credit to study/work budget
+    const previouslyCredited = video.watchedDurationSeconds || 0;
+    const remainderToAdd = video.type === 'work' 
+      ? Math.max(0, totalDurationSec - previouslyCredited)
+      : 0;
+
+    const { updatedPlan, updatedSubjects } = updateVideoPlaybackState(
+      selectedDate,
+      video.videoId,
+      totalDurationSec,
+      true, // isWatched
+      remainderToAdd
+    );
+
+    setCurrentPlan(updatedPlan);
+    setStudySubjects(updatedSubjects);
+    setActivePlayingVideo(null);
+
+    soundManager.playSuccessChime();
+    sendDesktopNotification(
+      '🎉 Study Video Completed!',
+      `Finished "${video.title}". Added to completed items and credited ${Math.round(totalDurationSec / 60)}m to study time!`
+    );
+  };
+
+  const handleCloseVideoModal = (video: YouTubeVideo, currentSeconds: number) => {
+    // Save last played timestamp so user can resume exactly where they left off
+    const { updatedPlan, updatedSubjects } = updateVideoPlaybackState(
+      selectedDate,
+      video.videoId,
+      currentSeconds,
+      false,
+      0
+    );
+
+    setCurrentPlan(updatedPlan);
+    setStudySubjects(updatedSubjects);
+    setActivePlayingVideo(null);
+  };
+
   const currentHour = new Date().getHours();
   const isEvening = currentHour >= 19 || currentHour < 4;
 
@@ -535,6 +581,8 @@ export function App() {
         video={activePlayingVideo}
         isOpen={!!activePlayingVideo}
         onClose={() => setActivePlayingVideo(null)}
+        onMarkDone={handleMarkVideoDone}
+        onCloseWithTimestamp={handleCloseVideoModal}
       />
 
       {/* 3. Review & Customize Template Task Before Adding Modal */}

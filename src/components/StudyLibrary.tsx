@@ -7,6 +7,7 @@ import {
   Calendar, 
   CalendarPlus, 
   Check, 
+  CheckCircle2,
   Tv, 
   Layers, 
   Clock, 
@@ -22,6 +23,7 @@ import {
 import { StudySubject, SubjectPlaylist, SubjectVideo, DayPlan, YouTubeVideo } from '../types';
 import { 
   formatMinutes, 
+  formatSeconds,
   extractYouTubeId, 
   getFormattedDate, 
   getTomorrowDate,
@@ -738,10 +740,15 @@ export const StudyLibrary: React.FC<StudyLibraryProps> = ({
                         {activePlaylistVideos.map((video) => {
                           const isScheduledToday = scheduledVideoIds.has(video.videoId);
 
+                          const hasResume = video.lastPlayedSeconds && video.lastPlayedSeconds > 0 && !video.isWatched;
+                          const progressPercent = hasResume && video.durationMinutes
+                            ? Math.min(100, Math.round((video.lastPlayedSeconds! / (video.durationMinutes * 60)) * 100))
+                            : 0;
+
                           return (
                             <div
                               key={video.id}
-                              className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden flex flex-col group hover:border-zinc-700 transition-all shadow-sm"
+                              className={`bg-zinc-900 border rounded-xl overflow-hidden flex flex-col group transition-all shadow-sm ${video.isWatched ? "border-emerald-700/60 opacity-85 hover:opacity-100" : "border-zinc-800 hover:border-zinc-700"}`}
                             >
                               {/* Thumbnail with overlay duration & play */}
                               <div className="relative aspect-video bg-zinc-950 overflow-hidden">
@@ -754,11 +761,33 @@ export const StudyLibrary: React.FC<StudyLibraryProps> = ({
                                   }}
                                 />
                                 
+                                {/* Watched or Resume badge */}
+                                {video.isWatched ? (
+                                  <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-emerald-600/90 text-white text-[10px] font-bold border border-emerald-400/40 flex items-center space-x-1 shadow">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span>Watched</span>
+                                  </div>
+                                ) : hasResume ? (
+                                  <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded bg-amber-500/90 text-zinc-950 text-[10px] font-mono font-bold border border-amber-300/60 flex items-center space-x-1 shadow">
+                                    <span>▶ Resume {formatSeconds(video.lastPlayedSeconds!)}</span>
+                                  </div>
+                                ) : null}
+
                                 {/* Duration pill */}
                                 <div className="absolute bottom-2 right-2 px-1.5 py-0.5 rounded bg-black/85 text-zinc-100 text-[10px] font-mono font-bold border border-zinc-700/60 flex items-center space-x-1">
                                   <Clock className="w-2.5 h-2.5" />
                                   <span>{formatMinutes(video.durationMinutes)}</span>
                                 </div>
+
+                                {/* Resume Progress Bar */}
+                                {hasResume && (
+                                  <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
+                                    <div 
+                                      className="h-full bg-emerald-500" 
+                                      style={{ width: `${progressPercent}%` }}
+                                    />
+                                  </div>
+                                )}
 
                                 {/* Play button hover overlay */}
                                 <div 
@@ -769,6 +798,8 @@ export const StudyLibrary: React.FC<StudyLibraryProps> = ({
                                     videoId: video.videoId,
                                     durationMinutes: video.durationMinutes,
                                     type: 'work',
+                                    lastPlayedSeconds: video.lastPlayedSeconds,
+                                    isWatched: video.isWatched,
                                   })}
                                   className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer"
                                   title="Play Video"

@@ -14,10 +14,11 @@ import {
   BookOpen,
   Folder,
   Check,
+  CheckCircle2,
   Link2
 } from 'lucide-react';
 import { DayPlan, YouTubeVideo, StudySubject, SubjectVideo } from '../types';
-import { formatMinutes, extractYouTubeId, loadStudySubjects } from '../utils/storage';
+import { formatMinutes, formatSeconds, extractYouTubeId, loadStudySubjects } from '../utils/storage';
 import { fetchYouTubeDetails } from '../utils/youtube';
 
 interface ScheduleYouTubeModalProps {
@@ -696,10 +697,18 @@ export const ScheduleYouTubeModal: React.FC<ScheduleYouTubeModalProps> = ({
             ) : (
               /* Thumbnail Card Grid */
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {currentVideos.map((video) => (
+                {currentVideos.map((video) => {
+                  const hasResume = video.lastPlayedSeconds && video.lastPlayedSeconds > 0 && !video.isWatched;
+                  const progressPercent = hasResume && video.durationMinutes
+                    ? Math.min(100, Math.round((video.lastPlayedSeconds! / (video.durationMinutes * 60)) * 100))
+                    : 0;
+
+                  return (
                   <div
                     key={video.id}
-                    className="group relative bg-[#18181b] border border-zinc-800 hover:border-zinc-600 rounded-xl overflow-hidden transition-all flex flex-col shadow-sm"
+                    className={`group relative bg-[#18181b] border rounded-xl overflow-hidden transition-all flex flex-col shadow-sm ${
+                      video.isWatched ? 'border-emerald-700/60 opacity-85 hover:opacity-100' : 'border-zinc-800 hover:border-zinc-600'
+                    }`}
                   >
                     {/* Thumbnail View */}
                     <div className="relative aspect-video w-full bg-black overflow-hidden">
@@ -712,10 +721,32 @@ export const ScheduleYouTubeModal: React.FC<ScheduleYouTubeModalProps> = ({
                         }}
                       />
 
+                      {/* Watched or Resume badge */}
+                      {video.isWatched ? (
+                        <div className="absolute top-1.5 left-1.5 bg-emerald-600/90 text-white text-[9px] font-bold px-1.5 py-0.5 rounded border border-emerald-400/40 flex items-center space-x-0.5 shadow">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Watched</span>
+                        </div>
+                      ) : hasResume ? (
+                        <div className="absolute top-1.5 left-1.5 bg-amber-500/90 text-zinc-950 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-amber-300/40 shadow">
+                          ▶ Resume {formatSeconds(video.lastPlayedSeconds!)}
+                        </div>
+                      ) : null}
+
                       {/* YouTube Time Badge on bottom-right corner */}
                       <div className="absolute bottom-1.5 right-1.5 bg-black/85 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border border-white/10">
                         ⏱ {formatMinutes(video.durationMinutes)}
                       </div>
+
+                      {/* Resume Progress Bar */}
+                      {hasResume && (
+                        <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
+                          <div 
+                            className="h-full bg-emerald-500" 
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+                      )}
 
                       {/* Center Play Button Overlay on Hover */}
                       <button
@@ -753,7 +784,8 @@ export const ScheduleYouTubeModal: React.FC<ScheduleYouTubeModalProps> = ({
                       </h5>
                     </div>
                   </div>
-                ))}
+                );
+              })}
               </div>
             )}
           </div>

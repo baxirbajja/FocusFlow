@@ -217,26 +217,62 @@ export const DayTracker: React.FC<DayTrackerProps> = ({
               </div>
               {plan.youtubeWorkVideos && plan.youtubeWorkVideos.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2">
-                  {plan.youtubeWorkVideos.map((v) => (
-                    <div
-                      key={v.id}
-                      onClick={() => onPlayVideo && onPlayVideo(v)}
-                      className="group relative bg-[#18181b] border border-zinc-800 hover:border-zinc-500 rounded-lg overflow-hidden transition-all cursor-pointer aspect-video"
-                      title={v.title}
-                    >
-                      <img
-                        src={`https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`}
-                        alt={v.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute bottom-1 right-1 bg-black/85 text-white text-[9px] font-mono font-bold px-1 py-0.2 rounded border border-white/10">
-                        {formatMinutes(v.durationMinutes)}
+                  {plan.youtubeWorkVideos.map((v) => {
+                    const hasResume = v.lastPlayedSeconds && v.lastPlayedSeconds > 0 && !v.isWatched;
+                    const progressPercent = hasResume && v.durationMinutes
+                      ? Math.min(100, Math.round((v.lastPlayedSeconds! / (v.durationMinutes * 60)) * 100))
+                      : 0;
+
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => onPlayVideo && onPlayVideo(v)}
+                        className={`group relative bg-[#18181b] border rounded-lg overflow-hidden transition-all cursor-pointer aspect-video ${
+                          v.isWatched 
+                            ? 'border-emerald-700/60 opacity-80 hover:opacity-100' 
+                            : 'border-zinc-800 hover:border-zinc-500'
+                        }`}
+                        title={v.title}
+                      >
+                        <img
+                          src={`https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`}
+                          alt={v.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+                        
+                        {/* Status overlays */}
+                        {v.isWatched ? (
+                          <div className="absolute top-1 left-1 bg-emerald-600/90 text-white text-[8px] font-bold px-1 py-0.2 rounded border border-emerald-400/40 flex items-center space-x-0.5 shadow">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            <span>Done</span>
+                          </div>
+                        ) : hasResume ? (
+                          <div className="absolute top-1 left-1 bg-amber-500/90 text-zinc-950 text-[8px] font-mono font-bold px-1 py-0.2 rounded border border-amber-300/40 shadow">
+                            ▶ {formatSeconds(v.lastPlayedSeconds!)}
+                          </div>
+                        ) : null}
+
+                        {/* Duration pill */}
+                        <div className="absolute bottom-1 right-1 bg-black/85 text-white text-[9px] font-mono font-bold px-1 py-0.2 rounded border border-white/10">
+                          {formatMinutes(v.durationMinutes)}
+                        </div>
+
+                        {/* Resume progress bar */}
+                        {hasResume && (
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
+                            <div 
+                              className="h-full bg-emerald-500" 
+                              style={{ width: `${progressPercent}%` }}
+                            />
+                          </div>
+                        )}
+
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Play className="w-3.5 h-3.5 text-white fill-current" />
+                        </div>
                       </div>
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                        <Play className="w-3.5 h-3.5 text-white fill-current" />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <span className="text-[10px] text-zinc-600 block py-1">No study videos scheduled.</span>
@@ -253,26 +289,61 @@ export const DayTracker: React.FC<DayTrackerProps> = ({
               </div>
               {plan.youtubeRestVideos && plan.youtubeRestVideos.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2">
-                  {plan.youtubeRestVideos.map((v) => (
-                    <div
-                      key={v.id}
-                      onClick={() => onPlayVideo && onPlayVideo(v)}
-                      className="group relative bg-[#18181b] border border-zinc-800 hover:border-zinc-500 rounded-lg overflow-hidden transition-all cursor-pointer aspect-video"
-                      title={v.title}
-                    >
-                      <img
-                        src={`https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`}
-                        alt={v.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                      <div className="absolute bottom-1 right-1 bg-black/85 text-white text-[9px] font-mono font-bold px-1 py-0.2 rounded border border-white/10">
-                        {formatMinutes(v.durationMinutes)}
+                  {plan.youtubeRestVideos.map((v) => {
+                    const hasResume = v.lastPlayedSeconds && v.lastPlayedSeconds > 0 && !v.isWatched;
+                    const progressPercent = hasResume && v.durationMinutes
+                      ? Math.min(100, Math.round((v.lastPlayedSeconds! / (v.durationMinutes * 60)) * 100))
+                      : 0;
+
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => onPlayVideo && onPlayVideo(v)}
+                        className={`group relative bg-[#18181b] border rounded-lg overflow-hidden transition-all cursor-pointer aspect-video ${
+                          v.isWatched 
+                            ? 'border-emerald-700/60 opacity-80 hover:opacity-100' 
+                            : 'border-zinc-800 hover:border-zinc-500'
+                        }`}
+                        title={v.title}
+                      >
+                        <img
+                          src={`https://img.youtube.com/vi/${v.videoId}/hqdefault.jpg`}
+                          alt={v.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                        />
+
+                        {/* Status overlays */}
+                        {v.isWatched ? (
+                          <div className="absolute top-1 left-1 bg-emerald-600/90 text-white text-[8px] font-bold px-1 py-0.2 rounded border border-emerald-400/40 flex items-center space-x-0.5 shadow">
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            <span>Done</span>
+                          </div>
+                        ) : hasResume ? (
+                          <div className="absolute top-1 left-1 bg-amber-500/90 text-zinc-950 text-[8px] font-mono font-bold px-1 py-0.2 rounded border border-amber-300/40 shadow">
+                            ▶ {formatSeconds(v.lastPlayedSeconds!)}
+                          </div>
+                        ) : null}
+
+                        <div className="absolute bottom-1 right-1 bg-black/85 text-white text-[9px] font-mono font-bold px-1 py-0.2 rounded border border-white/10">
+                          {formatMinutes(v.durationMinutes)}
+                        </div>
+
+                        {/* Resume progress bar */}
+                        {hasResume && (
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
+                            <div 
+                              className="h-full bg-emerald-500" 
+                              style={{ width: `${progressPercent}%` }}
+                            />
+                          </div>
+                        )}
+
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Play className="w-3.5 h-3.5 text-white fill-current" />
+                        </div>
                       </div>
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                        <Play className="w-3.5 h-3.5 text-white fill-current" />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <span className="text-[10px] text-zinc-600 block py-1">No entertainment videos scheduled.</span>
