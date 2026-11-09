@@ -138,10 +138,11 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 860,
-    minWidth: 800,
-    minHeight: 600,
-    frame: true,
-    backgroundColor: '#121214',
+    minWidth: 320,
+    minHeight: 80,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -151,6 +152,8 @@ function createWindow() {
     },
     title: 'FocusFlow Organizer',
   });
+
+  Menu.setApplicationMenu(null);
 
   // When clicking close (X), minimize to system tray and keep running in background!
   mainWindow.on('close', (event) => {
@@ -234,13 +237,13 @@ ipcMain.handle('enter-mini-mode', () => {
     if (current.width > 500 && current.height > 300) {
       savedNormalBounds = current;
     }
-    mainWindow.setMinimumSize(320, 120);
-    mainWindow.setSize(380, 165);
+    mainWindow.setMinimumSize(320, 80);
+    mainWindow.setSize(360, 92);
 
     try {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
-      mainWindow.setPosition(Math.max(0, screenW - 400), Math.max(0, screenH - 185));
+      mainWindow.setPosition(Math.max(0, screenW - 380), Math.max(0, screenH - 115));
     } catch (_) {}
 
     mainWindow.setAlwaysOnTop(true, 'floating');
@@ -262,6 +265,26 @@ ipcMain.handle('exit-mini-mode', () => {
     return false;
   }
   return false;
+});
+
+ipcMain.handle('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+    return mainWindow.isMaximized();
+  }
+  return false;
+});
+
+ipcMain.handle('window-close', () => {
+  if (mainWindow) mainWindow.close();
 });
 
 ipcMain.handle('toggle-always-on-top', (event, flag) => {

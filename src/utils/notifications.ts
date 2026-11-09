@@ -12,6 +12,9 @@ declare global {
       getAlwaysOnTop: () => Promise<boolean>;
       enterMiniMode?: () => Promise<boolean>;
       exitMiniMode?: () => Promise<boolean>;
+      minimizeWindow?: () => Promise<void>;
+      maximizeWindow?: () => Promise<boolean>;
+      closeWindow?: () => Promise<void>;
       fetchYouTubeMeta?: (videoId: string) => Promise<{
         success: boolean;
         title: string;

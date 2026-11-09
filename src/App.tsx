@@ -436,7 +436,7 @@ export function App() {
 
   if (isMiniMode) {
     return (
-      <div className="h-screen w-screen bg-[#121214] text-zinc-100 flex flex-col justify-center p-2 select-none overflow-hidden">
+      <div className="h-screen w-screen bg-transparent text-zinc-100 flex items-center justify-center p-0 m-0 select-none overflow-hidden">
         <MiniWidget
           plan={currentPlan}
           onExpand={handleExitMiniMode}

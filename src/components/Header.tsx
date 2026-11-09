@@ -12,7 +12,10 @@ import {
   History as HistoryIcon,
   BookOpen,
   Sparkles,
-  Power
+  Power,
+  Minus,
+  Square,
+  X
 } from 'lucide-react';
 import { AppView } from '../types';
 import { getFormattedDate, getTomorrowDate, getYesterdayDate, formatFriendlyDate } from '../utils/storage';
@@ -268,11 +271,41 @@ export const Header: React.FC<HeaderProps> = ({
 
           <button
             onClick={() => setIsMiniMode(!isMiniMode)}
-            title={isMiniMode ? 'Full View' : 'Mini Floating Bar'}
+            title={isMiniMode ? 'Full View' : 'Pin Mini Pop-up'}
             className="p-1.5 rounded-md bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60 transition-colors"
           >
             {isMiniMode ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
           </button>
+
+          {/* Desktop Frameless Window Controls */}
+          {window.electronAPI?.isElectron && (
+            <div className="flex items-center space-x-1 pl-2 border-l border-zinc-800 ml-1">
+              <button
+                type="button"
+                onClick={() => window.electronAPI?.minimizeWindow?.()}
+                title="Minimize"
+                className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <Minus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => window.electronAPI?.maximizeWindow?.()}
+                title="Maximize / Restore"
+                className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <Square className="w-3 h-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => window.electronAPI?.closeWindow?.()}
+                title="Close (Minimizes to Tray)"
+                className="p-1.5 rounded-md hover:bg-red-900/80 text-zinc-400 hover:text-red-200 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
 
       </div>
