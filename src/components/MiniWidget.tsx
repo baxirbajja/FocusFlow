@@ -72,14 +72,20 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
               <span>STUDY VIDEO</span>
             </div>
           ) : plan.isDayStarted ? (
-            <div className={`px-2 py-0.5 rounded-md border font-bold text-[10px] uppercase tracking-wider font-display flex items-center space-x-1.5 shadow-sm ${
-              isRestExceeded 
-                ? 'border-red-600/80 bg-red-950/40 text-red-400 animate-pulse' 
-                : 'border-amber-600/80 bg-amber-950/40 text-amber-500'
-            }`}>
-              <Coffee className="w-3 h-3 text-amber-500 stroke-[2.5]" />
-              <span>FREE TIME</span>
-            </div>
+            plan.isDayEnded ? (
+              <div className="px-2 py-0.5 rounded-md border border-purple-600/80 bg-purple-950/40 text-purple-300 font-bold text-[10px] uppercase tracking-wider font-display flex items-center space-x-1 shadow-sm">
+                <span>🌙 DAY ENDED</span>
+              </div>
+            ) : (
+              <div className={`px-2 py-0.5 rounded-md border font-bold text-[10px] uppercase tracking-wider font-display flex items-center space-x-1.5 shadow-sm ${
+                isRestExceeded 
+                  ? 'border-red-600/80 bg-red-950/40 text-red-400 animate-pulse' 
+                  : 'border-amber-600/80 bg-amber-950/40 text-amber-500'
+              }`}>
+                <Coffee className="w-3 h-3 text-amber-500 stroke-[2.5]" />
+                <span>FREE TIME</span>
+              </div>
+            )
           ) : (
             <div className="px-2 py-0.5 rounded-md border border-zinc-700 bg-zinc-800 text-zinc-400 font-bold text-[10px] uppercase tracking-wider font-display">
               DAY IDLE
@@ -184,14 +190,25 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
               </p>
             </>
           ) : plan.isDayStarted ? (
-            <>
-              <h4 className="text-sm font-bold text-white tracking-tight leading-tight">
-                Resting / Free Time
-              </h4>
-              <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">
-                Limit: {formatMinutes(plan.restHoursBudget)} ({Math.floor(plan.usedRestSeconds / 60)}m used)
-              </p>
-            </>
+            plan.isDayEnded ? (
+              <>
+                <h4 className="text-sm font-bold text-white tracking-tight leading-tight">
+                  Day Completed
+                </h4>
+                <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">
+                  Tracking ended • Click expand for report
+                </p>
+              </>
+            ) : (
+              <>
+                <h4 className="text-sm font-bold text-white tracking-tight leading-tight">
+                  Resting / Free Time
+                </h4>
+                <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">
+                  Limit: {formatMinutes(plan.restHoursBudget)} ({Math.floor(plan.usedRestSeconds / 60)}m used)
+                </p>
+              </>
+            )
           ) : (
             <>
               <h4 className="text-sm font-bold text-zinc-300 tracking-tight leading-tight">
@@ -227,16 +244,27 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
               </div>
             </>
           ) : plan.isDayStarted ? (
-            <>
-              <div className={`text-2xl font-black font-display font-mono tracking-wider leading-none ${
-                isRestExceeded ? 'text-red-400 animate-pulse' : 'text-amber-400'
-              }`}>
-                {formatSeconds(plan.usedRestSeconds)}
-              </div>
-              <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                {isRestExceeded ? 'OVER BUDGET' : 'REST USED'}
-              </div>
-            </>
+            plan.isDayEnded ? (
+              <>
+                <div className="text-2xl font-black font-display font-mono tracking-wider leading-none text-purple-300">
+                  {formatSeconds(plan.usedWorkSeconds)}
+                </div>
+                <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
+                  WORK LOGGED
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`text-2xl font-black font-display font-mono tracking-wider leading-none ${
+                  isRestExceeded ? 'text-red-400 animate-pulse' : 'text-amber-400'
+                }`}>
+                  {formatSeconds(plan.usedRestSeconds)}
+                </div>
+                <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
+                  {isRestExceeded ? 'OVER BUDGET' : 'REST USED'}
+                </div>
+              </>
+            )
           ) : (
             <>
               <div className="text-2xl font-black font-display font-mono tracking-wider leading-none text-zinc-500">

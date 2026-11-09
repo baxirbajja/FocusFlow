@@ -15,7 +15,9 @@ import {
   Power,
   Minus,
   Square,
-  X
+  X,
+  Moon,
+  BarChart2
 } from 'lucide-react';
 import { AppView } from '../types';
 import { getFormattedDate, getTomorrowDate, getYesterdayDate, formatFriendlyDate } from '../utils/storage';
@@ -30,6 +32,10 @@ interface HeaderProps {
   isMiniMode: boolean;
   setIsMiniMode: (mini: boolean) => void;
   onOpenAIDigest?: () => void;
+  isDayStarted?: boolean;
+  isDayEnded?: boolean;
+  onEndDay?: () => void;
+  onOpenDayReport?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -40,6 +46,10 @@ export const Header: React.FC<HeaderProps> = ({
   isMiniMode,
   setIsMiniMode,
   onOpenAIDigest,
+  isDayStarted,
+  isDayEnded,
+  onEndDay,
+  onOpenDayReport,
 }) => {
   const [isMuted, setIsMuted] = useState(soundManager.getMuted());
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
@@ -213,6 +223,30 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Tools */}
         <div className="flex items-center space-x-1.5">
+          {selectedDate === todayStr && isDayStarted && (
+            !isDayEnded && onEndDay ? (
+              <button
+                type="button"
+                onClick={onEndDay}
+                title="End Day: Stop tracking and view your daily report"
+                className="px-2.5 py-1 rounded-md bg-purple-950/40 hover:bg-purple-900/60 text-purple-300 hover:text-white text-xs font-bold font-display uppercase tracking-wider border border-purple-800/60 flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <Moon className="w-3.5 h-3.5 text-purple-400" />
+                <span>End Day</span>
+              </button>
+            ) : onOpenDayReport ? (
+              <button
+                type="button"
+                onClick={onOpenDayReport}
+                title="View Day Summary & Productivity Report"
+                className="px-2.5 py-1 rounded-md bg-purple-950/40 hover:bg-purple-900/60 text-purple-300 hover:text-white text-xs font-bold font-display uppercase tracking-wider border border-purple-800/60 flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <BarChart2 className="w-3.5 h-3.5 text-purple-400" />
+                <span>Day Report</span>
+              </button>
+            ) : null
+          )}
+
           {onOpenAIDigest && (
             <button
               onClick={onOpenAIDigest}

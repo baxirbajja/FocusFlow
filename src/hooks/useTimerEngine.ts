@@ -41,7 +41,7 @@ export function useTimerEngine({
 
     const interval = setInterval(() => {
       const plan = planRef.current;
-      if (!plan.isDayStarted) return;
+      if (!plan.isDayStarted || plan.isDayEnded) return;
 
       const nowMs = Date.now();
       const deltaMs = nowMs - lastTickTime.current;
@@ -268,8 +268,52 @@ export function useTimerEngine({
     setTaskOverModalTask(null);
   }, [setCurrentPlan]);
 
+  const endDay = useCallback(() => {
+    setCurrentPlan((prev) => {
+      // Pause any running task
+      const updatedTasks = prev.tasks.map((t) => {
+        if (t.status === 'in_progress') {
+          return { ...t, status: 'pending' as const };
+        }
+        return t;
+      });
+
+      const updated: DayPlan = {
+        ...prev,
+        isDayEnded: true,
+        dayEndedAt: new Date().toISOString(),
+        activeTaskId: null,
+        tasks: updatedTasks,
+        lastHeartbeatTimestamp: new Date().toISOString(),
+      };
+      saveDayPlan(updated);
+      soundManager.playSuccessChime();
+      sendDesktopNotification(
+        '🌙 Day Completed',
+        'Daily tracking stopped. Here is your Day Summary & Productivity Report.'
+      );
+      return updated;
+    });
+  }, [setCurrentPlan]);
+
+  const reopenDay = useCallback(() => {
+    setCurrentPlan((prev) => {
+      const updated: DayPlan = {
+        ...prev,
+        isDayEnded: false,
+        lastHeartbeatTimestamp: new Date().toISOString(),
+      };
+      saveDayPlan(updated);
+      soundManager.playStartChime();
+      sendDesktopNotification('🔄 Day Tracking Resumed', 'Daily clock restarted.');
+      return updated;
+    });
+  }, [setCurrentPlan]);
+
   return {
     startDay,
+    endDay,
+    reopenDay,
     startTask,
     pauseTask,
     completeTask,

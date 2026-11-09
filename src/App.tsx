@@ -16,6 +16,7 @@ import { DropVideoModal } from './components/DropVideoModal';
 import { DropPlaylistModal } from './components/DropPlaylistModal';
 import { StudyLibrary } from './components/StudyLibrary';
 import { AIDigestModal } from './components/AIDigestModal';
+import { DayReportModal } from './components/DayReportModal';
 import { BottomNav } from './components/BottomNav';
 import { OfflineCatchupModal, OfflineCatchupData } from './components/OfflineCatchupModal';
 import { AppView, DayPlan, Task, PriorityLevel, TaskTemplate, YouTubeVideo, StudySubject } from './types';
@@ -103,6 +104,9 @@ export function App() {
   // Study Library Subjects state
   const [studySubjects, setStudySubjects] = useState<StudySubject[]>(() => loadStudySubjects());
 
+  // Day Report Modal State
+  const [isDayReportModalOpen, setIsDayReportModalOpen] = useState<boolean>(false);
+
   // AI Lecture & TP Digest Modal
   const [isAIDigestModalOpen, setIsAIDigestModalOpen] = useState<boolean>(false);
 
@@ -165,6 +169,8 @@ export function App() {
 
   const {
     startDay,
+    endDay,
+    reopenDay,
     startTask,
     pauseTask,
     completeTask,
@@ -178,6 +184,35 @@ export function App() {
     onOfflineSleepDetected: handleOfflineSleepDetected,
     activePlayingVideo,
   });
+
+  const handleEndDay = () => {
+    endDay();
+    setIsDayReportModalOpen(true);
+  };
+
+  const handleMoveTasksToTomorrow = (tasksToCarryOver: Task[]) => {
+    const tomorrowPlan = loadDayPlan(tomorrowStr);
+
+    const newCarriedTasks: Task[] = tasksToCarryOver.map((t) => ({
+      ...t,
+      id: 'task_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      status: 'pending' as const,
+      actualDuration: 0,
+      completedAt: undefined,
+    }));
+
+    const updatedTomorrowPlan: DayPlan = {
+      ...tomorrowPlan,
+      tasks: [...tomorrowPlan.tasks, ...newCarriedTasks],
+    };
+
+    saveDayPlan(updatedTomorrowPlan);
+    soundManager.playSuccessChime();
+    sendDesktopNotification(
+      '📅 Tasks Scheduled for Tomorrow',
+      `Moved ${newCarriedTasks.length} task(s) into tomorrow's schedule (${tomorrowStr}).`
+    );
+  };
 
   const handleApplyOfflineTime = (appliedSeconds: number, target: 'work' | 'rest' | 'discard') => {
     if (target === 'work' && currentPlan.activeTaskId && appliedSeconds > 0) {
@@ -487,6 +522,10 @@ export function App() {
         isMiniMode={isMiniMode}
         setIsMiniMode={handleToggleMiniMode}
         onOpenAIDigest={() => setIsAIDigestModalOpen(true)}
+        isDayStarted={currentPlan.isDayStarted}
+        isDayEnded={currentPlan.isDayEnded}
+        onEndDay={handleEndDay}
+        onOpenDayReport={() => setIsDayReportModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -509,16 +548,27 @@ export function App() {
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                setSelectedDate(tomorrowStr);
-                setActiveView('planner');
-              }}
-              className="px-3 py-1.5 bg-zinc-200 hover:bg-white text-zinc-950 font-bold rounded-lg text-xs transition-colors flex items-center space-x-1 shrink-0 cursor-pointer"
-            >
-              <span>Plan Tomorrow</span>
-              <ArrowRight className="w-3 h-3" />
-            </button>
+            <div className="flex items-center space-x-2">
+              {currentPlan.isDayStarted && !currentPlan.isDayEnded && (
+                <button
+                  onClick={handleEndDay}
+                  className="px-3 py-1.5 bg-purple-950/60 hover:bg-purple-900/80 text-purple-300 hover:text-white font-bold rounded-lg text-xs border border-purple-800/60 transition-colors flex items-center space-x-1 shrink-0 cursor-pointer"
+                >
+                  <Moon className="w-3 h-3 text-purple-400" />
+                  <span>End Day</span>
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setSelectedDate(tomorrowStr);
+                  setActiveView('planner');
+                }}
+                className="px-3 py-1.5 bg-zinc-200 hover:bg-white text-zinc-950 font-bold rounded-lg text-xs transition-colors flex items-center space-x-1 shrink-0 cursor-pointer"
+              >
+                <span>Plan Tomorrow</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
           </div>
         )}
 
@@ -530,6 +580,9 @@ export function App() {
             <ActiveTaskHUD
               plan={currentPlan}
               onStartDay={startDay}
+              onEndDay={handleEndDay}
+              onOpenDayReport={() => setIsDayReportModalOpen(true)}
+              onReopenDay={reopenDay}
               onPauseTask={pauseTask}
               onCompleteTask={completeTask}
               onExtendTask={extendTaskTime}
@@ -690,6 +743,15 @@ export function App() {
         data={offlineCatchupData}
         onApply={handleApplyOfflineTime}
         onClose={() => setOfflineCatchupData(null)}
+      />
+
+      {/* 8. Day Performance & Productivity Report Modal */}
+      <DayReportModal
+        isOpen={isDayReportModalOpen}
+        onClose={() => setIsDayReportModalOpen(false)}
+        plan={currentPlan}
+        onReopenDay={reopenDay}
+        onMoveTasksToTomorrow={handleMoveTasksToTomorrow}
       />
 
       {/* Subtle Minimal Footer */}

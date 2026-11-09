@@ -5,7 +5,10 @@ import {
   CheckCircle2, 
   FileText, 
   Coffee,
-  Pin
+  Pin,
+  Moon,
+  BarChart2,
+  RotateCcw
 } from 'lucide-react';
 import { DayPlan, Task } from '../types';
 import { formatSeconds, formatMinutes } from '../utils/storage';
@@ -13,6 +16,9 @@ import { formatSeconds, formatMinutes } from '../utils/storage';
 interface ActiveTaskHUDProps {
   plan: DayPlan;
   onStartDay: () => void;
+  onEndDay?: () => void;
+  onOpenDayReport?: () => void;
+  onReopenDay?: () => void;
   onPauseTask: (taskId: string) => void;
   onCompleteTask: (taskId: string) => void;
   onExtendTask: (taskId: string, mins: number) => void;
@@ -24,6 +30,9 @@ interface ActiveTaskHUDProps {
 export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
   plan,
   onStartDay,
+  onEndDay,
+  onOpenDayReport,
+  onReopenDay,
   onPauseTask,
   onCompleteTask,
   onExtendTask,
@@ -48,6 +57,62 @@ export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
           <Play className="w-3.5 h-3.5 fill-current" />
           <span>Start Day Tracker</span>
         </button>
+      </div>
+    );
+  }
+
+  // If day has ended
+  if (plan.isDayEnded && isToday) {
+    const completedTasksCount = plan.tasks.filter((t) => t.status === 'completed').length;
+    return (
+      <div className="bg-[#18181b] border border-zinc-700/80 rounded-2xl p-5 my-4">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-400 flex items-center justify-center shrink-0">
+              <Moon className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-zinc-800 text-purple-300 border border-purple-800/50 uppercase tracking-wider font-mono">
+                  Day Tracking Stopped
+                </span>
+                <span className="text-xs text-zinc-400 font-medium">
+                  {completedTasksCount} / {plan.tasks.length} tasks completed
+                </span>
+              </div>
+              <h2 className="text-xl font-extrabold font-display text-white tracking-tight mt-0.5">
+                Day Completed
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Both work and rest timer clocks are frozen. View your day performance report or reschedule unfinished tasks.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2.5 shrink-0">
+            {onOpenDayReport && (
+              <button
+                type="button"
+                onClick={onOpenDayReport}
+                className="px-4 py-2.5 bg-zinc-100 hover:bg-white text-zinc-950 font-bold rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer shadow-sm"
+              >
+                <BarChart2 className="w-4 h-4" />
+                <span>View Day Report</span>
+              </button>
+            )}
+
+            {onReopenDay && (
+              <button
+                type="button"
+                onClick={onReopenDay}
+                className="px-3.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold rounded-xl border border-zinc-700 text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Resume Day</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -150,6 +215,18 @@ export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
                 </button>
               )}
 
+              {onEndDay && (
+                <button
+                  type="button"
+                  onClick={onEndDay}
+                  title="End day tracking and generate your daily performance report"
+                  className="px-3 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold rounded-lg border border-zinc-700 text-xs flex items-center space-x-1.5 cursor-pointer transition-colors"
+                >
+                  <Moon className="w-3.5 h-3.5 text-purple-400" />
+                  <span>End Day</span>
+                </button>
+              )}
+
               {/* Extensions */}
               <div className="flex items-center space-x-1">
                 {[10, 15, 30].map((m) => (
@@ -213,16 +290,30 @@ export const ActiveTaskHUD: React.FC<ActiveTaskHUDProps> = ({
           <div className="text-[11px] text-zinc-500 font-medium">
             Limit: {formatMinutes(plan.restHoursBudget)}
           </div>
-          {onEnterMiniMode && (
-            <button
-              onClick={onEnterMiniMode}
-              title="Pin mini floating pop-up timer on screen while resting"
-              className="mt-2 px-3 py-1 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold rounded-lg border border-zinc-700 text-xs inline-flex items-center space-x-1.5 cursor-pointer transition-colors"
-            >
-              <Pin className="w-3.5 h-3.5 text-amber-300 rotate-45" />
-              <span>Pin Free Time</span>
-            </button>
-          )}
+          <div className="flex items-center justify-start md:justify-end gap-2 mt-2">
+            {onEnterMiniMode && (
+              <button
+                onClick={onEnterMiniMode}
+                title="Pin mini floating pop-up timer on screen while resting"
+                className="px-3 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 hover:text-white font-semibold rounded-lg border border-zinc-700 text-xs inline-flex items-center space-x-1.5 cursor-pointer transition-colors"
+              >
+                <Pin className="w-3.5 h-3.5 text-amber-300 rotate-45" />
+                <span>Pin Free Time</span>
+              </button>
+            )}
+
+            {onEndDay && (
+              <button
+                type="button"
+                onClick={onEndDay}
+                title="End day tracking and view your daily report"
+                className="px-3.5 py-1.5 bg-zinc-800/90 hover:bg-zinc-700 text-purple-300 hover:text-white font-bold rounded-lg border border-purple-800/60 text-xs inline-flex items-center space-x-1.5 cursor-pointer transition-colors shadow-xs"
+              >
+                <Moon className="w-3.5 h-3.5 text-purple-400" />
+                <span>End Day</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

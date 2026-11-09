@@ -43,6 +43,8 @@ export interface DayPlan {
   tasks: Task[];
   isDayStarted: boolean; // whether user kicked off their day
   dayStartedAt?: string; // ISO timestamp
+  isDayEnded?: boolean; // whether user ended their day
+  dayEndedAt?: string; // ISO timestamp
   activeTaskId: string | null; // which task is currently being tracked
   usedWorkSeconds: number; // accumulated work time in seconds
   usedRestSeconds: number; // accumulated rest/idle time in seconds
