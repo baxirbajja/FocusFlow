@@ -13,14 +13,16 @@ import {
   BookOpen,
   Sparkles,
   Power,
-  Minus,
-  Square,
-  X,
   Moon,
-  BarChart2
+  BarChart2,
+  Settings,
+  Search,
+  Pause,
+  CheckCircle2,
+  ArrowUpRight
 } from 'lucide-react';
-import { AppView } from '../types';
-import { getFormattedDate, getTomorrowDate, getYesterdayDate, formatFriendlyDate } from '../utils/storage';
+import { AppView, Task } from '../types';
+import { getFormattedDate, getTomorrowDate, getYesterdayDate, formatFriendlyDate, formatSeconds, formatMinutes } from '../utils/storage';
 import { soundManager } from '../utils/audio';
 import { requestNotificationPermission } from '../utils/notifications';
 
@@ -32,10 +34,16 @@ interface HeaderProps {
   isMiniMode: boolean;
   setIsMiniMode: (mini: boolean) => void;
   onOpenAIDigest?: () => void;
+  onOpenSettings?: () => void;
   isDayStarted?: boolean;
   isDayEnded?: boolean;
   onEndDay?: () => void;
   onOpenDayReport?: () => void;
+  activeTask?: Task | null;
+  onPauseTask?: (taskId: string) => void;
+  onCompleteTask?: (taskId: string) => void;
+  onClickActiveTask?: (task: Task) => void;
+  onOpenSearch?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -46,10 +54,16 @@ export const Header: React.FC<HeaderProps> = ({
   isMiniMode,
   setIsMiniMode,
   onOpenAIDigest,
+  onOpenSettings,
   isDayStarted,
   isDayEnded,
   onEndDay,
   onOpenDayReport,
+  activeTask,
+  onPauseTask,
+  onCompleteTask,
+  onClickActiveTask,
+  onOpenSearch,
 }) => {
   const [isMuted, setIsMuted] = useState(soundManager.getMuted());
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false);
@@ -104,8 +118,15 @@ export const Header: React.FC<HeaderProps> = ({
     }
   };
 
+  const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+  const dragStyle = isElectron ? ({ WebkitAppRegion: 'drag' } as React.CSSProperties) : undefined;
+  const noDragStyle = isElectron ? ({ WebkitAppRegion: 'no-drag' } as React.CSSProperties) : undefined;
+
   return (
-    <header className="border-b border-zinc-800/80 bg-[#161619] sticky top-0 z-40 px-4 py-3">
+    <header
+      className="border-b border-zinc-800/80 bg-[#161619] sticky top-0 z-40 px-4 py-3"
+      style={dragStyle}
+    >
       <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-3">
         
         {/* Brand */}
@@ -127,7 +148,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Date Selector */}
-        <div className="flex items-center bg-zinc-900/90 p-1 rounded-lg border border-zinc-800 text-xs">
+        <div className="flex items-center bg-zinc-900/90 p-1 rounded-lg border border-zinc-800 text-xs" style={noDragStyle}>
           <button
             onClick={() => setSelectedDate(yesterdayStr)}
             className={`px-2.5 py-1 rounded transition-colors font-semibold ${
@@ -174,7 +195,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Navigation Tabs (Desktop / Tablet) */}
-        <div className="hidden md:flex items-center bg-zinc-900/90 p-1 rounded-lg border border-zinc-800 text-xs">
+        <div className="hidden md:flex items-center bg-zinc-900/90 p-1 rounded-lg border border-zinc-800 text-xs" style={noDragStyle}>
           <button
             onClick={() => setActiveView('tracker')}
             className={`px-3 py-1 rounded transition-colors font-bold flex items-center space-x-1.5 ${
@@ -222,7 +243,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Tools */}
-        <div className="flex items-center space-x-1.5">
+        <div className="flex items-center space-x-1.5" style={noDragStyle}>
           {selectedDate === todayStr && isDayStarted && (
             !isDayEnded && onEndDay ? (
               <button
@@ -245,6 +266,21 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Day Report</span>
               </button>
             ) : null
+          )}
+
+          {onOpenSearch && (
+            <button
+              type="button"
+              onClick={onOpenSearch}
+              title="Search across all subjects, concepts, commands, and TPs (Ctrl+F)"
+              className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold border border-zinc-700 flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+            >
+              <Search className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="hidden lg:inline">Search</span>
+              <span className="text-[10px] font-mono px-1 py-0.2 rounded bg-zinc-900 border border-zinc-700 text-zinc-400">
+                Ctrl+F
+              </span>
+            </button>
           )}
 
           {onOpenAIDigest && (
@@ -303,6 +339,16 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              title="Settings & Data Backup"
+              className="p-1.5 rounded-md bg-zinc-800/80 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border border-zinc-700/60 transition-colors cursor-pointer"
+            >
+              <Settings className="w-3.5 h-3.5" />
+            </button>
+          )}
+
           <button
             onClick={() => setIsMiniMode(!isMiniMode)}
             title={isMiniMode ? 'Full View' : 'Pin Mini Pop-up'}
@@ -310,39 +356,94 @@ export const Header: React.FC<HeaderProps> = ({
           >
             {isMiniMode ? <Maximize2 className="w-3.5 h-3.5" /> : <Minimize2 className="w-3.5 h-3.5" />}
           </button>
-
-          {/* Desktop Frameless Window Controls */}
-          {window.electronAPI?.isElectron && (
-            <div className="flex items-center space-x-1 pl-2 border-l border-zinc-800 ml-1">
-              <button
-                type="button"
-                onClick={() => window.electronAPI?.minimizeWindow?.()}
-                title="Minimize"
-                className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <Minus className="w-3.5 h-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => window.electronAPI?.maximizeWindow?.()}
-                title="Maximize / Restore"
-                className="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <Square className="w-3 h-3" />
-              </button>
-              <button
-                type="button"
-                onClick={() => window.electronAPI?.closeWindow?.()}
-                title="Close (Minimizes to Tray)"
-                className="p-1.5 rounded-md hover:bg-red-900/80 text-zinc-400 hover:text-red-200 transition-colors cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
         </div>
 
       </div>
+
+      {/* Persistent Live Mini-Timer Strip across all views */}
+      {activeTask && activeTask.status === 'in_progress' && (() => {
+        const plannedSeconds = Math.max(60, activeTask.plannedDuration * 60);
+        const remainingSeconds = plannedSeconds - activeTask.actualDuration;
+        const isOvertime = remainingSeconds < 0;
+        const progressPct = Math.min(100, Math.round((activeTask.actualDuration / plannedSeconds) * 100));
+
+        return (
+          <div
+            className="max-w-6xl mx-auto mt-2.5 pt-2 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2.5"
+            style={noDragStyle}
+          >
+            <button
+              type="button"
+              onClick={() => onClickActiveTask?.(activeTask)}
+              title={
+                activeTask.studyLink
+                  ? 'Jump to linked Study Library TP / Part card'
+                  : 'Switch to Today Tracker'
+              }
+              className="flex items-center space-x-2.5 min-w-0 flex-1 text-left group cursor-pointer"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-950/70 text-emerald-300 border border-emerald-800/60 shrink-0">
+                Live
+              </span>
+              <span className="text-xs font-semibold text-zinc-100 group-hover:text-indigo-300 truncate transition-colors">
+                {activeTask.title}
+              </span>
+              <ArrowUpRight className="w-3.5 h-3.5 text-zinc-500 group-hover:text-indigo-400 shrink-0" />
+            </button>
+
+            <div className="flex items-center space-x-3 shrink-0">
+              <div className="hidden sm:flex items-center space-x-2">
+                <div className="w-24 h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      isOvertime ? 'bg-rose-500' : 'bg-emerald-400'
+                    }`}
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400">
+                  {formatSeconds(activeTask.actualDuration)} / {formatMinutes(activeTask.plannedDuration)}
+                </span>
+              </div>
+
+              <span
+                className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${
+                  isOvertime
+                    ? 'bg-rose-950/60 text-rose-300 border-rose-800/60'
+                    : 'bg-zinc-900 text-emerald-300 border-zinc-700'
+                }`}
+              >
+                {isOvertime ? `+${formatSeconds(Math.abs(remainingSeconds))}` : formatSeconds(remainingSeconds)}
+              </span>
+
+              {onPauseTask && (
+                <button
+                  type="button"
+                  onClick={() => onPauseTask(activeTask.id)}
+                  className="px-2.5 py-1 rounded-md bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 text-[11px] font-semibold flex items-center space-x-1 transition-colors cursor-pointer"
+                  title="Pause active task"
+                >
+                  <Pause className="w-3 h-3" />
+                  <span>Pause</span>
+                </button>
+              )}
+
+              {onCompleteTask && (
+                <button
+                  type="button"
+                  onClick={() => onCompleteTask(activeTask.id)}
+                  className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center space-x-1 transition-colors cursor-pointer"
+                  title="Complete task & sync Study Library progress"
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Done</span>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </header>
   );
 };

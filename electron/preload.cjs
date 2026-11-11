@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exitMiniMode: () => ipcRenderer.invoke('exit-mini-mode'),
   minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
+  isWindowMaximized: () => ipcRenderer.invoke('window-is-maximized'),
+  onWindowMaximizedChange: (callback) => {
+    const handler = (_event, isMaximized) => callback(isMaximized);
+    ipcRenderer.on('window-maximized-change', handler);
+    return () => ipcRenderer.removeListener('window-maximized-change', handler);
+  },
   closeWindow: () => ipcRenderer.invoke('window-close'),
   fetchYouTubeMeta: (videoId) => ipcRenderer.invoke('fetch-youtube-meta', videoId),
   searchYouTube: (query) => ipcRenderer.invoke('search-youtube', query),
@@ -47,4 +53,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAllStorageKeys: () => {
     return Object.keys(memoryCache);
   },
+  createStoreBackup: (label) => ipcRenderer.invoke('create-store-backup', label),
+  listStoreBackups: () => ipcRenderer.invoke('list-store-backups'),
+  restoreStoreBackup: async (fileName) => {
+    const res = await ipcRenderer.invoke('restore-store-backup', fileName);
+    if (res && res.success) {
+      try {
+        memoryCache = ipcRenderer.sendSync('storage-get-all-sync') || {};
+      } catch (e) {
+        console.warn('Failed to refresh memoryCache after restore:', e);
+      }
+    }
+    return res;
+  },
+  deleteStoreBackup: (fileName) => ipcRenderer.invoke('delete-store-backup', fileName),
 });

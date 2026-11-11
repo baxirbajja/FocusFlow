@@ -4,10 +4,8 @@ import {
   Pause, 
   Play, 
   CheckCircle2, 
-  Coffee, 
   Pin, 
-  PinOff, 
-  Tv
+  PinOff 
 } from 'lucide-react';
 import { DayPlan, YouTubeVideo } from '../types';
 import { formatSeconds, formatMinutes } from '../utils/storage';
@@ -17,7 +15,7 @@ interface MiniWidgetProps {
   onExpand: () => void;
   onPauseTask: (taskId: string) => void;
   onCompleteTask: (taskId: string) => void;
-  onExtendTask: (taskId: string, mins: number) => void;
+  onExtendTask?: (taskId: string, mins: number) => void;
   onStartNextTask?: () => void;
   onStartDay?: () => void;
   activePlayingVideo?: YouTubeVideo | null;
@@ -31,7 +29,6 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
   onExpand,
   onPauseTask,
   onCompleteTask,
-  onExtendTask,
   onStartNextTask,
   onStartDay,
   activePlayingVideo,
@@ -43,59 +40,111 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
   const nextPendingTask = plan.tasks.find((t) => t.status === 'pending');
   const isRestExceeded = plan.usedRestSeconds > plan.restHoursBudget * 60;
 
-  const targetSeconds = activeTask ? activeTask.plannedDuration * 60 : 0;
-  const remainingSeconds = activeTask ? targetSeconds - activeTask.actualDuration : 0;
-  const isOvertime = remainingSeconds < 0;
+  // 1. Task Countdown & Dynamic Progress Color
+  let budgetLabel = 'DAY IDLE';
+  let timerText = '00:00:00';
+  let colorClass = 'text-zinc-500';
+  let barColorClass = 'bg-zinc-700';
+  let progressPercent = 0;
+
+  if (activeTask) {
+    budgetLabel = `WORK BUDGET • ${activeTask.title}`;
+    const targetSeconds = activeTask.plannedDuration * 60;
+    const remainingSeconds = targetSeconds - activeTask.actualDuration;
+    const isOvertime = remainingSeconds < 0;
+
+    if (isOvertime) {
+      timerText = `+${formatSeconds(Math.abs(remainingSeconds))}`;
+      colorClass = 'text-red-500 animate-pulse font-black';
+      barColorClass = 'bg-red-500 animate-pulse';
+      progressPercent = 100;
+    } else {
+      timerText = formatSeconds(remainingSeconds);
+      const ratio = targetSeconds > 0 ? remainingSeconds / targetSeconds : 0;
+      progressPercent = Math.min(100, Math.max(0, ratio * 100));
+
+      // Color changes dynamically from start to end:
+      // > 50% left: Fresh Emerald Green
+      // 20% - 50% left: Golden Amber
+      // < 20% left: Warm Orange / Red alert
+      if (ratio >= 0.50) {
+        colorClass = 'text-emerald-400 font-black';
+        barColorClass = 'bg-emerald-400';
+      } else if (ratio >= 0.20) {
+        colorClass = 'text-amber-400 font-black';
+        barColorClass = 'bg-amber-400';
+      } else {
+        colorClass = 'text-orange-400 animate-pulse font-black';
+        barColorClass = 'bg-orange-400 animate-pulse';
+      }
+    }
+  } else if (activePlayingVideo && activePlayingVideo.type === 'work') {
+    budgetLabel = `STUDY VIDEO • ${activePlayingVideo.title}`;
+    timerText = formatSeconds(activePlayingVideo.lastPlayedSeconds || 0);
+    colorClass = 'text-cyan-400 font-black';
+    barColorClass = 'bg-cyan-400';
+    progressPercent = 100;
+  } else if (plan.isDayStarted) {
+    if (plan.isDayEnded) {
+      budgetLabel = 'DAY COMPLETED';
+      timerText = formatSeconds(plan.usedWorkSeconds);
+      colorClass = 'text-purple-300 font-black';
+      barColorClass = 'bg-purple-400';
+      progressPercent = 100;
+    } else {
+      // Idle Rest / Free Time Mode
+      const usedMins = Math.floor(plan.usedRestSeconds / 60);
+      budgetLabel = `REST BUDGET (${usedMins}m / ${formatMinutes(plan.restHoursBudget)})`;
+      timerText = formatSeconds(plan.usedRestSeconds);
+
+      const restBudgetSec = plan.restHoursBudget * 60;
+      const ratio = restBudgetSec > 0 ? plan.usedRestSeconds / restBudgetSec : 0;
+      progressPercent = Math.min(100, ratio * 100);
+
+      if (isRestExceeded) {
+        colorClass = 'text-red-500 animate-pulse font-black';
+        barColorClass = 'bg-red-500 animate-pulse';
+      } else if (ratio >= 0.80) {
+        colorClass = 'text-orange-400 font-black';
+        barColorClass = 'bg-orange-400';
+      } else if (ratio >= 0.50) {
+        colorClass = 'text-amber-400 font-black';
+        barColorClass = 'bg-amber-400';
+      } else {
+        colorClass = 'text-emerald-400 font-black';
+        barColorClass = 'bg-emerald-400';
+      }
+    }
+  }
 
   return (
     <div 
-      className={`bg-[#18181b] border border-zinc-700/80 rounded-2xl px-3.5 py-2.5 flex flex-col justify-between shadow-2xl select-none text-zinc-100 ${
+      className={`bg-[#18181b]/95 backdrop-blur-md border border-zinc-700/80 shadow-2xl select-none text-zinc-100 flex flex-col justify-between overflow-hidden ${
         isStandaloneWindow 
-          ? 'w-full h-full' 
-          : 'fixed bottom-4 right-4 z-50 w-[360px] h-[92px] max-w-[95vw]'
+          ? 'w-full h-full rounded-[8px]' 
+          : 'fixed bottom-4 right-4 z-50 w-[210px] h-[50px] max-w-[95vw] rounded-[10px]'
       }`}
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
-      {/* Top Row: Badge on Left, Action Controls & Window Controls on Right */}
-      <div className="flex items-center justify-between shrink-0">
+      {/* Upper Content: Budget Tag & Big Dynamic Timer + Micro Action Buttons */}
+      <div className="flex items-center justify-between px-2.5 pt-1.5 pb-0.5 min-w-0 flex-1">
         
-        {/* Status Badge */}
-        <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-          {activeTask ? (
-            <div className="px-2 py-0.5 rounded-md border border-emerald-600/80 bg-emerald-950/40 text-emerald-400 font-bold text-[10px] uppercase tracking-wider font-display flex items-center space-x-1.5 shadow-sm">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>WORKING</span>
-            </div>
-          ) : activePlayingVideo && activePlayingVideo.type === 'work' ? (
-            <div className="px-2 py-0.5 rounded-md border border-cyan-600/80 bg-cyan-950/40 text-cyan-400 font-bold text-[10px] uppercase tracking-wider font-display flex items-center space-x-1.5 shadow-sm">
-              <Tv className="w-3 h-3 text-cyan-400" />
-              <span>STUDY VIDEO</span>
-            </div>
-          ) : plan.isDayStarted ? (
-            plan.isDayEnded ? (
-              <div className="px-2 py-0.5 rounded-md border border-purple-600/80 bg-purple-950/40 text-purple-300 font-bold text-[10px] uppercase tracking-wider font-display flex items-center space-x-1 shadow-sm">
-                <span>🌙 DAY ENDED</span>
-              </div>
-            ) : (
-              <div className={`px-2 py-0.5 rounded-md border font-bold text-[10px] uppercase tracking-wider font-display flex items-center space-x-1.5 shadow-sm ${
-                isRestExceeded 
-                  ? 'border-red-600/80 bg-red-950/40 text-red-400 animate-pulse' 
-                  : 'border-amber-600/80 bg-amber-950/40 text-amber-500'
-              }`}>
-                <Coffee className="w-3 h-3 text-amber-500 stroke-[2.5]" />
-                <span>FREE TIME</span>
-              </div>
-            )
-          ) : (
-            <div className="px-2 py-0.5 rounded-md border border-zinc-700 bg-zinc-800 text-zinc-400 font-bold text-[10px] uppercase tracking-wider font-display">
-              DAY IDLE
-            </div>
-          )}
+        {/* Left Side: Budget Label & Timer */}
+        <div className="min-w-0 flex-1 pr-1.5 flex flex-col justify-center">
+          <span 
+            className="text-[8px] font-mono font-bold uppercase tracking-wider text-zinc-400 truncate block leading-none mb-1"
+            title={budgetLabel}
+          >
+            {budgetLabel}
+          </span>
+          <div className={`text-[21px] font-mono leading-none tracking-tight ${colorClass}`}>
+            {timerText}
+          </div>
         </div>
 
-        {/* Right: Quick actions + Pin + Expand */}
+        {/* Right Side: Micro Action Buttons */}
         <div 
-          className="flex items-center space-x-2 shrink-0" 
+          className="flex items-center space-x-1 shrink-0"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
           {activeTask && (
@@ -113,13 +162,6 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
                 className="p-1 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white transition-colors cursor-pointer"
               >
                 <Pause className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => onExtendTask(activeTask.id, 10)}
-                title="Extend +10m"
-                className="px-1 py-0.5 rounded hover:bg-zinc-800 text-zinc-400 hover:text-white font-mono text-[9px] font-bold transition-colors cursor-pointer"
-              >
-                +10m
               </button>
             </>
           )}
@@ -147,12 +189,12 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
           {onTogglePin && (
             <button
               onClick={onTogglePin}
-              title={isPinned ? 'Pinned Always on Top (Click to unpin)' : 'Pin Always on Top'}
+              title={isPinned ? 'Always on Top (Active)' : 'Pin on Top'}
               className={`p-1 rounded hover:bg-zinc-800 transition-colors cursor-pointer ${
                 isPinned ? 'text-cyan-400' : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              {isPinned ? <Pin className="w-3.5 h-3.5 rotate-45 fill-current" /> : <PinOff className="w-3.5 h-3.5" />}
+              {isPinned ? <Pin className="w-3 h-3 rotate-45 fill-current" /> : <PinOff className="w-3 h-3" />}
             </button>
           )}
 
@@ -164,120 +206,17 @@ export const MiniWidget: React.FC<MiniWidgetProps> = ({
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
-
-      {/* Bottom Row: Title & Subtitle on Left, Large Digital Timer & Label on Right */}
-      <div className="flex items-end justify-between gap-3 min-w-0 pt-1">
-        
-        {/* Left Side: Title & Subtitle */}
-        <div className="min-w-0 flex-1">
-          {activeTask ? (
-            <>
-              <h4 className="text-sm font-bold text-white tracking-tight leading-tight truncate" title={activeTask.title}>
-                {activeTask.title}
-              </h4>
-              <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">
-                {formatSeconds(activeTask.actualDuration)} / {formatMinutes(activeTask.plannedDuration)}
-              </p>
-            </>
-          ) : activePlayingVideo ? (
-            <>
-              <h4 className="text-sm font-bold text-white tracking-tight leading-tight truncate" title={activePlayingVideo.title}>
-                {activePlayingVideo.title}
-              </h4>
-              <p className="text-[11px] text-cyan-400 font-medium truncate mt-0.5">
-                Counting as Study Time
-              </p>
-            </>
-          ) : plan.isDayStarted ? (
-            plan.isDayEnded ? (
-              <>
-                <h4 className="text-sm font-bold text-white tracking-tight leading-tight">
-                  Day Completed
-                </h4>
-                <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">
-                  Tracking ended • Click expand for report
-                </p>
-              </>
-            ) : (
-              <>
-                <h4 className="text-sm font-bold text-white tracking-tight leading-tight">
-                  Resting / Free Time
-                </h4>
-                <p className="text-[11px] text-zinc-400 font-medium truncate mt-0.5">
-                  Limit: {formatMinutes(plan.restHoursBudget)} ({Math.floor(plan.usedRestSeconds / 60)}m used)
-                </p>
-              </>
-            )
-          ) : (
-            <>
-              <h4 className="text-sm font-bold text-zinc-300 tracking-tight leading-tight">
-                Day Not Started
-              </h4>
-              <p className="text-[11px] text-zinc-500 font-medium mt-0.5">
-                Click play above to begin
-              </p>
-            </>
-          )}
-        </div>
-
-        {/* Right Side: Giant Digital Timer & Subtitle Label */}
-        <div className="text-right shrink-0">
-          {activeTask ? (
-            <>
-              <div className={`text-2xl font-black font-display font-mono tracking-wider leading-none ${
-                isOvertime ? 'text-red-400 animate-pulse' : 'text-zinc-100'
-              }`}>
-                {isOvertime ? `+${formatSeconds(Math.abs(remainingSeconds))}` : formatSeconds(remainingSeconds)}
-              </div>
-              <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                {isOvertime ? 'OVERTIME' : 'REMAINING'}
-              </div>
-            </>
-          ) : activePlayingVideo ? (
-            <>
-              <div className="text-2xl font-black font-display font-mono tracking-wider leading-none text-cyan-300">
-                {formatSeconds(activePlayingVideo.lastPlayedSeconds || 0)}
-              </div>
-              <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                / {formatMinutes(activePlayingVideo.durationMinutes)}
-              </div>
-            </>
-          ) : plan.isDayStarted ? (
-            plan.isDayEnded ? (
-              <>
-                <div className="text-2xl font-black font-display font-mono tracking-wider leading-none text-purple-300">
-                  {formatSeconds(plan.usedWorkSeconds)}
-                </div>
-                <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                  WORK LOGGED
-                </div>
-              </>
-            ) : (
-              <>
-                <div className={`text-2xl font-black font-display font-mono tracking-wider leading-none ${
-                  isRestExceeded ? 'text-red-400 animate-pulse' : 'text-amber-400'
-                }`}>
-                  {formatSeconds(plan.usedRestSeconds)}
-                </div>
-                <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest mt-1">
-                  {isRestExceeded ? 'OVER BUDGET' : 'REST USED'}
-                </div>
-              </>
-            )
-          ) : (
-            <>
-              <div className="text-2xl font-black font-display font-mono tracking-wider leading-none text-zinc-500">
-                00:00:00
-              </div>
-              <div className="text-[9px] font-bold text-zinc-600 uppercase tracking-widest mt-1">
-                IDLE
-              </div>
-            </>
-          )}
-        </div>
 
       </div>
+
+      {/* Bottom Progress Bar: Visually shrinking/growing with the remaining time */}
+      <div className="w-full h-[2.5px] bg-zinc-800 shrink-0 overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-500 ease-linear ${barColorClass}`}
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
+
     </div>
   );
 };

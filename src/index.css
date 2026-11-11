@@ -18,9 +18,11 @@
   }
 }
 
-.font-display {
-  font-family: 'Syne', 'Outfit', sans-serif;
-  letter-spacing: -0.03em;
+@layer components {
+  .font-display {
+    font-family: 'Space Grotesk', 'Outfit', system-ui, sans-serif;
+    letter-spacing: -0.015em;
+  }
 }
 
 /* Minimalist matte scrollbar */

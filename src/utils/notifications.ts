@@ -14,6 +14,8 @@ declare global {
       exitMiniMode?: () => Promise<boolean>;
       minimizeWindow?: () => Promise<void>;
       maximizeWindow?: () => Promise<boolean>;
+      isWindowMaximized?: () => Promise<boolean>;
+      onWindowMaximizedChange?: (callback: (isMaximized: boolean) => void) => () => void;
       closeWindow?: () => Promise<void>;
       fetchYouTubeMeta?: (videoId: string) => Promise<{
         success: boolean;
@@ -58,6 +60,26 @@ declare global {
       removeStorage?: (key: string) => void;
       getAllStorage?: () => Record<string, any>;
       getAllStorageKeys?: () => string[];
+      createStoreBackup?: (label?: string) => Promise<{
+        success: boolean;
+        backup?: { fileName: string; createdAt: string; sizeBytes: number };
+        error?: string;
+      }>;
+      listStoreBackups?: () => Promise<{
+        success: boolean;
+        backups: Array<{ fileName: string; createdAt: string; sizeBytes: number }>;
+        backupsDir?: string;
+        error?: string;
+      }>;
+      restoreStoreBackup?: (fileName: string) => Promise<{
+        success: boolean;
+        restoredFileName?: string;
+        error?: string;
+      }>;
+      deleteStoreBackup?: (fileName: string) => Promise<{
+        success: boolean;
+        error?: string;
+      }>;
     };
   }
 }

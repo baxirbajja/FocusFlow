@@ -27,11 +27,18 @@ function readDiskStore() {
 
 function writeDiskStore(data) {
   try {
-    fs.writeFileSync(storeFilePath, JSON.stringify(data, null, 2), 'utf-8');
+    const tmpPath = `${storeFilePath}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, storeFilePath);
     return true;
   } catch (err) {
-    console.error('Failed write to store file:', err);
-    return false;
+    try {
+      fs.writeFileSync(storeFilePath, JSON.stringify(data, null, 2), 'utf-8');
+      return true;
+    } catch (e) {
+      console.error('Failed write to store file:', e);
+      return false;
+    }
   }
 }
 
@@ -59,6 +66,111 @@ ipcMain.handle('storage-remove-item', (event, key) => {
   const store = readDiskStore();
   delete store[key];
   return writeDiskStore(store);
+});
+
+const backupsDirPath = path.join(userDataPath, 'backups');
+
+function ensureBackupsDir() {
+  if (!fs.existsSync(backupsDirPath)) {
+    fs.mkdirSync(backupsDirPath, { recursive: true });
+  }
+}
+
+ipcMain.handle('create-store-backup', (_event, label) => {
+  try {
+    ensureBackupsDir();
+    const store = readDiskStore();
+    const now = new Date();
+    const stamp = now.toISOString().replace(/[:.]/g, '-');
+    const safeLabel = typeof label === 'string' && label.trim()
+      ? '_' + label.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').slice(0, 32)
+      : '';
+    const fileName = `focusflow-backup-${stamp}${safeLabel}.json`;
+    const filePath = path.join(backupsDirPath, fileName);
+    const jsonStr = JSON.stringify(store, null, 2);
+    fs.writeFileSync(filePath, jsonStr, 'utf-8');
+    const stat = fs.statSync(filePath);
+    return {
+      success: true,
+      backup: {
+        fileName,
+        createdAt: now.toISOString(),
+        sizeBytes: stat.size,
+      },
+    };
+  } catch (err) {
+    console.error('Create backup failed:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('list-store-backups', () => {
+  try {
+    ensureBackupsDir();
+    const entries = fs.readdirSync(backupsDirPath)
+      .filter((f) => f.endsWith('.json'))
+      .map((fileName) => {
+        const fullPath = path.join(backupsDirPath, fileName);
+        const stat = fs.statSync(fullPath);
+        return {
+          fileName,
+          createdAt: stat.mtime.toISOString(),
+          sizeBytes: stat.size,
+        };
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 25);
+    return { success: true, backups: entries, backupsDir: backupsDirPath };
+  } catch (err) {
+    console.error('List backups failed:', err);
+    return { success: false, backups: [], error: err.message };
+  }
+});
+
+ipcMain.handle('restore-store-backup', (_event, fileName) => {
+  try {
+    if (!fileName || typeof fileName !== 'string') {
+      return { success: false, error: 'Invalid backup filename.' };
+    }
+    ensureBackupsDir();
+    const safeName = path.basename(fileName);
+    const fullPath = path.join(backupsDirPath, safeName);
+    if (!fs.existsSync(fullPath)) {
+      return { success: false, error: 'Backup file not found.' };
+    }
+    const raw = fs.readFileSync(fullPath, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { success: false, error: 'Corrupted backup JSON format.' };
+    }
+    // Auto-save safety snapshot before overwriting current store
+    try {
+      const current = readDiskStore();
+      const safetyName = `focusflow-backup-${new Date().toISOString().replace(/[:.]/g, '-')}_pre-restore.json`;
+      fs.writeFileSync(path.join(backupsDirPath, safetyName), JSON.stringify(current, null, 2), 'utf-8');
+    } catch {
+      // Non-fatal safety backup failure
+    }
+    const ok = writeDiskStore(parsed);
+    return { success: ok, restoredFileName: safeName };
+  } catch (err) {
+    console.error('Restore backup failed:', err);
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('delete-store-backup', (_event, fileName) => {
+  try {
+    if (!fileName || typeof fileName !== 'string') return { success: false };
+    const safeName = path.basename(fileName);
+    const fullPath = path.join(backupsDirPath, safeName);
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+    }
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
 });
 
 let mainWindow = null;
@@ -138,11 +250,12 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1240,
     height: 860,
-    minWidth: 320,
-    minHeight: 80,
+    minWidth: 800,
+    minHeight: 600,
     frame: false,
-    transparent: true,
-    backgroundColor: '#00000000',
+    transparent: false,
+    thickFrame: true,
+    backgroundColor: '#121214',
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -151,6 +264,18 @@ function createWindow() {
       webSecurity: false,
     },
     title: 'FocusFlow Organizer',
+  });
+
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized-change', true);
+    }
+  });
+
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('window-maximized-change', false);
+    }
   });
 
   Menu.setApplicationMenu(null);
@@ -181,12 +306,15 @@ function createWindow() {
     return { action: 'deny' };
   });
 
-  const isDev = !app.isPackaged && process.env.NODE_ENV !== 'production';
+  const indexPath = path.join(__dirname, '../dist/index.html');
+  const isDev = !app.isPackaged && process.env.NODE_ENV === 'development';
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
+  } else if (fs.existsSync(indexPath)) {
+    mainWindow.loadFile(indexPath);
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    mainWindow.loadURL('http://localhost:5173');
   }
 
   mainWindow.on('closed', () => {
@@ -230,20 +358,26 @@ ipcMain.handle('show-notification', (event, { title, body, urgency }) => {
 });
 
 let savedNormalBounds = null;
+let savedWasMaximized = false;
 
 ipcMain.handle('enter-mini-mode', () => {
   if (mainWindow) {
+    savedWasMaximized = mainWindow.isMaximized();
+    if (savedWasMaximized) {
+      mainWindow.unmaximize();
+    }
     const current = mainWindow.getBounds();
     if (current.width > 500 && current.height > 300) {
       savedNormalBounds = current;
     }
-    mainWindow.setMinimumSize(320, 80);
-    mainWindow.setSize(360, 92);
+    mainWindow.setMinimumSize(160, 40);
+    mainWindow.setSize(210, 50);
+    mainWindow.setResizable(false);
 
     try {
       const primaryDisplay = screen.getPrimaryDisplay();
       const { width: screenW, height: screenH } = primaryDisplay.workAreaSize;
-      mainWindow.setPosition(Math.max(0, screenW - 380), Math.max(0, screenH - 115));
+      mainWindow.setPosition(Math.max(0, screenW - 230), Math.max(0, screenH - 74));
     } catch (_) {}
 
     mainWindow.setAlwaysOnTop(true, 'floating');
@@ -254,6 +388,8 @@ ipcMain.handle('enter-mini-mode', () => {
 
 ipcMain.handle('exit-mini-mode', () => {
   if (mainWindow) {
+    mainWindow.setAlwaysOnTop(false);
+    mainWindow.setResizable(true);
     mainWindow.setMinimumSize(800, 600);
     if (savedNormalBounds && savedNormalBounds.width >= 800) {
       mainWindow.setBounds(savedNormalBounds);
@@ -261,7 +397,10 @@ ipcMain.handle('exit-mini-mode', () => {
       mainWindow.setSize(1240, 860);
       mainWindow.center();
     }
-    mainWindow.setAlwaysOnTop(false);
+    if (savedWasMaximized) {
+      mainWindow.maximize();
+      savedWasMaximized = false;
+    }
     return false;
   }
   return false;
@@ -281,6 +420,10 @@ ipcMain.handle('window-maximize', () => {
     return mainWindow.isMaximized();
   }
   return false;
+});
+
+ipcMain.handle('window-is-maximized', () => {
+  return mainWindow ? mainWindow.isMaximized() : false;
 });
 
 ipcMain.handle('window-close', () => {
@@ -445,9 +588,20 @@ ipcMain.handle('parse-file-content', async (event, { fileName, base64Data }) => 
     const lowerName = (fileName || '').toLowerCase();
 
     if (lowerName.endsWith('.pdf')) {
-      const pdf = require('pdf-parse');
-      const data = await pdf(buffer);
-      return { success: true, text: data.text || '' };
+      const pdfLib = require('pdf-parse');
+      if (typeof pdfLib === 'function') {
+        const data = await pdfLib(buffer);
+        return { success: true, text: data.text || '' };
+      }
+      if (pdfLib && typeof pdfLib.PDFParse === 'function') {
+        const parser = new pdfLib.PDFParse({ data: buffer });
+        try {
+          const data = await parser.getText();
+          return { success: true, text: data.text || '' };
+        } finally {
+          await parser.destroy().catch(() => {});
+        }
+      }
     }
 
     // Default to utf-8 plain text for .txt, .vtt, .srt, .md, .json, .csv, .sh, .py, etc.
@@ -501,7 +655,7 @@ ipcMain.handle('search-youtube', async (event, query) => {
         }
       }
     }
-    return items.slice(0, 8);
+    return items.slice(0, 16);
   } catch (err) {
     console.error('YouTube search failed:', err);
     return [];

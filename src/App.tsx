@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { TitleBar } from './components/TitleBar';
 import { Header } from './components/Header';
 import { BudgetOverview } from './components/BudgetOverview';
 import { ActiveTaskHUD } from './components/ActiveTaskHUD';
@@ -19,7 +20,10 @@ import { AIDigestModal } from './components/AIDigestModal';
 import { DayReportModal } from './components/DayReportModal';
 import { BottomNav } from './components/BottomNav';
 import { OfflineCatchupModal, OfflineCatchupData } from './components/OfflineCatchupModal';
-import { AppView, DayPlan, Task, PriorityLevel, TaskTemplate, YouTubeVideo, StudySubject } from './types';
+import { SettingsModal } from './components/SettingsModal';
+import { PostureBreakModal } from './components/PostureBreakModal';
+import { GlobalStudySearchModal } from './components/GlobalStudySearchModal';
+import { AppView, DayPlan, Task, PriorityLevel, TaskTemplate, YouTubeVideo, StudySubject, StudyNavigationTarget, TaskStudyLink } from './types';
 import { 
   getFormattedDate, 
   getTomorrowDate, 
@@ -36,6 +40,9 @@ import {
   extractYouTubeId,
   extractYouTubePlaylistId,
   updateVideoPlaybackState,
+  resolveTaskStudyNavigation,
+  setStudyTPCompletedState,
+  setStudyPartConceptsCompleted,
 } from './utils/storage';
 import { soundManager } from './utils/audio';
 import { sendDesktopNotification } from './utils/notifications';
@@ -107,8 +114,14 @@ export function App() {
   // Day Report Modal State
   const [isDayReportModalOpen, setIsDayReportModalOpen] = useState<boolean>(false);
 
+  // Settings & Accountability Engine Modal State
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState<boolean>(false);
+
   // AI Lecture & TP Digest Modal
   const [isAIDigestModalOpen, setIsAIDigestModalOpen] = useState<boolean>(false);
+  const [aiDigestSubjectId, setAiDigestSubjectId] = useState<string | undefined>(undefined);
+  const [pendingStudyNav, setPendingStudyNav] = useState<StudyNavigationTarget | null>(null);
+  const [isSearchModalOpen, setIsSearchModalOpen] = useState<boolean>(false);
 
   // Drag & Drop State
   const [isGlobalDragOver, setIsGlobalDragOver] = useState(false);
@@ -177,6 +190,11 @@ export function App() {
     extendTaskTime,
     taskOverModalTask,
     setTaskOverModalTask,
+    isPostureModalOpen,
+    continuousWorkMinutes,
+    handleAcknowledgePostureBreak,
+    handleSnoozePostureBreak,
+    handleTakeStretchBreak,
   } = useTimerEngine({
     currentPlan,
     setCurrentPlan,
@@ -469,6 +487,52 @@ export function App() {
   const currentHour = new Date().getHours();
   const isEvening = currentHour >= 19 || currentHour < 4;
 
+  // Global Ctrl+F Search across Study Library Subjects, Concepts, Commands & TPs
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        if (isMiniMode) return;
+        e.preventDefault();
+        setIsSearchModalOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isMiniMode]);
+
+  const activeRunningTask = currentPlan.activeTaskId
+    ? currentPlan.tasks.find((t) => t.id === currentPlan.activeTaskId && t.status === 'in_progress') || null
+    : null;
+
+  // Complete a Task + two-way sync completion back to linked Study Library TP or Part concepts
+  const handleCompleteTask = (taskId: string) => {
+    const completedTask = currentPlan.tasks.find((t) => t.id === taskId);
+    completeTask(taskId);
+    if (!completedTask) return;
+
+    const target = resolveTaskStudyNavigation(completedTask, studySubjects);
+    if (target) {
+      const updatedSubjects = target.tpId
+        ? setStudyTPCompletedState(target.subjectId, target.partId, target.tpId, true)
+        : setStudyPartConceptsCompleted(target.subjectId, target.partId, true);
+      setStudySubjects(updatedSubjects);
+    }
+  };
+
+  const handleNavigateStudyTarget = (target: TaskStudyLink) => {
+    setPendingStudyNav({ ...target, nonce: Date.now() });
+    setActiveView('library');
+  };
+
+  const handleClickHeaderActiveTask = (task: Task) => {
+    const target = resolveTaskStudyNavigation(task, studySubjects);
+    if (target) {
+      handleNavigateStudyTarget(target);
+    } else {
+      setActiveView('tracker');
+    }
+  };
+
   if (isMiniMode) {
     return (
       <div className="h-screen w-screen bg-transparent text-zinc-100 flex items-center justify-center p-0 m-0 select-none overflow-hidden">
@@ -476,7 +540,7 @@ export function App() {
           plan={currentPlan}
           onExpand={handleExitMiniMode}
           onPauseTask={pauseTask}
-          onCompleteTask={completeTask}
+          onCompleteTask={handleCompleteTask}
           onExtendTask={extendTaskTime}
           onStartNextTask={() => {
             const nextPending = currentPlan.tasks.find((t) => t.status === 'pending');
@@ -492,9 +556,13 @@ export function App() {
     );
   }
 
-  return (
+  const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
+
+  const appShellContent = (
     <div 
-      className="min-h-screen bg-[#121214] text-zinc-100 flex flex-col font-sans selection:bg-zinc-700 selection:text-white relative"
+      className={`${
+        isElectron ? 'h-full w-full overflow-y-auto' : 'min-h-screen'
+      } bg-[#121214] text-zinc-100 flex flex-col font-sans selection:bg-zinc-700 selection:text-white relative`}
       onDragOver={handleGlobalDragOver}
       onDragLeave={handleGlobalDragLeave}
       onDrop={handleGlobalDrop}
@@ -522,10 +590,16 @@ export function App() {
         isMiniMode={isMiniMode}
         setIsMiniMode={handleToggleMiniMode}
         onOpenAIDigest={() => setIsAIDigestModalOpen(true)}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
         isDayStarted={currentPlan.isDayStarted}
         isDayEnded={currentPlan.isDayEnded}
         onEndDay={handleEndDay}
         onOpenDayReport={() => setIsDayReportModalOpen(true)}
+        activeTask={activeRunningTask}
+        onPauseTask={pauseTask}
+        onCompleteTask={handleCompleteTask}
+        onClickActiveTask={handleClickHeaderActiveTask}
+        onOpenSearch={() => setIsSearchModalOpen(true)}
       />
 
       {/* Main Container */}
@@ -584,7 +658,7 @@ export function App() {
               onOpenDayReport={() => setIsDayReportModalOpen(true)}
               onReopenDay={reopenDay}
               onPauseTask={pauseTask}
-              onCompleteTask={completeTask}
+              onCompleteTask={handleCompleteTask}
               onExtendTask={extendTaskTime}
               onOpenNotes={setNoteModalTask}
               isToday={isToday}
@@ -593,9 +667,17 @@ export function App() {
 
             <DayTracker
               plan={currentPlan}
-              onStartTask={startTask}
+              onStartTask={(taskId) => {
+                startTask(taskId);
+                const task = currentPlan.tasks.find((t) => t.id === taskId);
+                const target = task ? resolveTaskStudyNavigation(task, studySubjects) : null;
+                if (target) {
+                  setPendingStudyNav({ ...target, nonce: Date.now() });
+                  setActiveView('library');
+                }
+              }}
               onPauseTask={pauseTask}
-              onCompleteTask={completeTask}
+              onCompleteTask={handleCompleteTask}
               onOpenNotes={setNoteModalTask}
               onQuickAddTask={handleQuickAddTask}
               onGoToPlanner={() => setActiveView('planner')}
@@ -634,6 +716,12 @@ export function App() {
             onUpdateSubjects={handleUpdateSubjects}
             onPlayVideo={(video) => setActivePlayingVideo(video)}
             onOpenImportPlaylist={() => setIsImportPlaylistModalOpen(true)}
+            onOpenAIDigest={(subjectId) => {
+              setAiDigestSubjectId(subjectId);
+              setIsAIDigestModalOpen(true);
+            }}
+            navigationTarget={pendingStudyNav}
+            onClearNavigationTarget={() => setPendingStudyNav(null)}
           />
         )}
 
@@ -713,11 +801,21 @@ export function App() {
       {/* 5. AI Lecture & TP Homework Digest Studio Modal */}
       <AIDigestModal
         isOpen={isAIDigestModalOpen}
-        onClose={() => setIsAIDigestModalOpen(false)}
+        onClose={() => {
+          setIsAIDigestModalOpen(false);
+          setAiDigestSubjectId(undefined);
+        }}
         subjects={studySubjects}
         currentPlan={currentPlan}
         onUpdatePlan={handleUpdatePlan}
+        onUpdateSubjects={handleUpdateSubjects}
         onPlayVideo={(video) => setActivePlayingVideo(video)}
+        initialSubjectId={aiDigestSubjectId}
+        onViewSubjectRoadmap={(subjectId) => {
+          setActiveView('library');
+          setIsAIDigestModalOpen(false);
+          setAiDigestSubjectId(undefined);
+        }}
       />
 
       {/* 5. Notes Modal */}
@@ -732,7 +830,7 @@ export function App() {
       <TaskOverModal
         task={taskOverModalTask}
         isOpen={!!taskOverModalTask}
-        onComplete={completeTask}
+        onComplete={handleCompleteTask}
         onExtend={extendTaskTime}
         onClose={() => setTaskOverModalTask(null)}
       />
@@ -754,6 +852,34 @@ export function App() {
         onMoveTasksToTomorrow={handleMoveTasksToTomorrow}
       />
 
+      {/* 9. Settings, Strict Mode & Data Backup Modal */}
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onDataRestored={() => {
+          setCurrentPlan(loadDayPlan(selectedDate));
+          setStudySubjects(loadStudySubjects());
+          setTaskTemplates(loadTaskTemplates());
+        }}
+      />
+
+      {/* 10. 40-Min Posture & Mind Break Modal */}
+      <PostureBreakModal
+        isOpen={isPostureModalOpen}
+        continuousMinutes={continuousWorkMinutes}
+        onTakeBreak={handleTakeStretchBreak}
+        onSnooze={handleSnoozePostureBreak}
+        onDismiss={handleAcknowledgePostureBreak}
+      />
+
+      {/* 11. Global Ctrl+F Study Search Modal */}
+      <GlobalStudySearchModal
+        isOpen={isSearchModalOpen}
+        onClose={() => setIsSearchModalOpen(false)}
+        subjects={studySubjects}
+        onNavigateToTarget={handleNavigateStudyTarget}
+      />
+
       {/* Subtle Minimal Footer */}
       <footer className="border-t border-zinc-800/80 py-3 text-center text-[11px] text-zinc-600 mb-14 md:mb-0">
         FocusFlow • Dynamic Energy & Rest Management
@@ -767,6 +893,22 @@ export function App() {
       />
     </div>
   );
+
+  if (isElectron) {
+    return (
+      <div className="h-screen w-screen bg-[#121214] text-zinc-100 flex flex-col overflow-hidden">
+        <TitleBar />
+        <div
+          className="flex-1 min-h-0 relative overflow-hidden"
+          style={{ transform: 'translateZ(0)' }}
+        >
+          {appShellContent}
+        </div>
+      </div>
+    );
+  }
+
+  return appShellContent;
 }
 
 export default App;
